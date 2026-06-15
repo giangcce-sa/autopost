@@ -96,6 +96,7 @@ model Tenant {            // 1 spa = 1 tenant
   id            String   @id @default(cuid())
   name          String
   timezone      String   @default("Asia/Ho_Chi_Minh")
+  businessType  BusinessType @default(SPA_NON_INVASIVE) // quyết định ranh giới content (xem mục 13)
   autonomyLevel AutonomyLevel @default(FULL_AUTO)
   plan          Plan     @default(BASIC)
   createdAt     DateTime @default(now())
@@ -109,6 +110,11 @@ model Tenant {            // 1 spa = 1 tenant
 
 enum AutonomyLevel { MANUAL SEMI_AUTO FULL_AUTO }
 enum Plan { BASIC PRO ENTERPRISE }
+enum BusinessType {
+  SPA_NON_INVASIVE  // spa/chăm sóc da không xâm lấn — chỉ ĐKKD, KHÔNG quảng cáo như y tế
+  AESTHETIC_MEDICAL // thẩm mỹ có can thiệp y khoa (tiêm/laser) — cần GP y tế + xác nhận nội dung
+  CLINIC            // phòng khám/phẫu thuật thẩm mỹ — cần GP KCB + xác nhận nội dung
+}
 
 model User {              // chủ spa / nhân viên
   id        String @id @default(cuid())
@@ -384,4 +390,63 @@ Giá tham chiếu (mỗi 1M token, input/output):
 
 ---
 
-*Tài liệu này là bản nháp để thống nhất trước khi code. Mọi mục có thể điều chỉnh theo phản hồi.*
+---
+
+## 13. Pháp lý quảng cáo ngành làm đẹp ở VN (compliance)
+
+> Đây là rủi ro hạng nhất với một hệ **tự sinh nội dung + tự đăng**. Quảng cáo sai có thể bị phạt và liên đới trách nhiệm.
+
+### Khung pháp lý (đang siết chặt)
+- **Luật Quảng cáo sửa đổi 2025** (Luật 75/2025/QH15, thông qua 16/6/2025) — hiệu lực **1/1/2026**.
+- **Nghị định 342/2025/NĐ-CP** quy định chi tiết — hiệu lực **15/2/2026**.
+- **Nghị định 38/2021/NĐ-CP** (sửa đổi bởi 128/2021) — xử phạt; **mức phạt tổ chức = 2× cá nhân**.
+- **Nghị định 13/2023/NĐ-CP** — bảo vệ dữ liệu cá nhân (liên quan lead & tình báo).
+
+### Phân loại cơ sở → ranh giới content
+| `businessType` | Giấy phép | Ranh giới quảng cáo |
+|---|---|---|
+| `SPA_NON_INVASIVE` | Chỉ ĐKKD | **Không** quảng cáo như điều trị bệnh/dịch vụ y tế |
+| `AESTHETIC_MEDICAL` | GP hoạt động y tế | Quảng cáo dịch vụ KCB phải có **xác nhận nội dung** của cơ quan y tế **trước khi** đăng |
+| `CLINIC` | GP khám chữa bệnh | Như trên, kiểm soát chặt hơn |
+
+### Hành vi bị cấm (Compliance guardrail phải chặn)
+- Thổi phồng công dụng: "cam kết 100%", "khỏi hẳn", "điều trị dứt điểm", "không tái phát"…
+- Quảng cáo **mỹ phẩm / dịch vụ thẩm mỹ như thuốc / có tác dụng chữa bệnh**.
+- Ảnh before/after gây hiểu nhầm; mạo danh bác sĩ/cơ sở y tế.
+- **Lời chứng thực bịa đặt**: luật buộc "người chuyển tải sản phẩm quảng cáo" (KOL/KOC/reviewer) **phải đã trực tiếp dùng & hiểu rõ sản phẩm**, **minh bạch là quảng cáo**, và **liên đới chịu trách nhiệm**. ⇒ **AI không được tự sinh lời chứng thực dạng "tôi đã dùng và khỏi".**
+
+### Nội dung bắt buộc khi quảng cáo mỹ phẩm
+Tên mỹ phẩm · tính năng/công dụng · tên + địa chỉ tổ chức/cá nhân chịu trách nhiệm · cảnh báo (nếu có).
+
+### Cơ chế trong hệ thống
+1. `Tenant.businessType` + bảng `ComplianceDoc` (lưu giấy phép, văn bản xác nhận nội dung) gắn vào content y tế.
+2. **Compliance guardrail** trong Content Agent: từ điển từ cấm + kiểm tra nội dung bắt buộc + phân loại chủ đề nhạy cảm → gắn cờ `PENDING_APPROVAL`.
+3. Với `AESTHETIC_MEDICAL`/`CLINIC`: hạ Full-auto xuống **bắt buộc duyệt người thật** trước khi đăng.
+4. Lưu **audit** nội dung đã đăng (ai/agent nào, model nào, đã duyệt chưa) phục vụ giải trình.
+
+> ⚠️ Đây là tóm tắt định hướng kỹ thuật, **không phải tư vấn pháp lý**. Trước khi vận hành thật nên rà soát với luật sư và cập nhật theo văn bản mới nhất (Luật 2025 + NĐ 342/2025 có hiệu lực đầu 2026).
+
+---
+
+## 14. Tình báo đối thủ: scrape vs nguồn chính thức
+
+> Mục 9 nêu "degrade gracefully"; mục này nói rõ cách làm để **hợp pháp & bền vững**.
+
+### Hiện trạng
+- **TikTok:** ToS **cấm** truy cập tự động/scrape; chống scraping chủ động. Scrape dữ liệu công khai có thể "thường hợp pháp" ở Mỹ sau *hiQ v. LinkedIn* (CFAA) nhưng **vẫn vi phạm hợp đồng (ToS)** → rủi ro dân sự + bị chặn/khóa.
+- **Google Trends:** không có API công khai ổn định; thư viện không chính thống (pytrends) dễ bị rate-limit/chặn và vi phạm ToS.
+- **Facebook Ads Library:** có API chính thức nhưng **giới hạn** (ads thương mại spa lấy được ít).
+- **VN:** vướng Nghị định 13/2023 nếu thu thập dữ liệu cá nhân.
+
+### Nguyên tắc thiết kế (ưu tiên từ trên xuống)
+1. **Nguồn chính thức trước:** TikTok **Creative Center / Commercial Content (Ads) Library**, **TikTok Research API** (nếu đủ điều kiện), Facebook **Ads Library API**, và **`web_search` tích hợp của Claude** để AI suy luận xu hướng.
+2. **Nhà cung cấp dữ liệu bên thứ ba có giấy phép** (managed scraping API) để **chuyển rủi ro** thay vì tự scrape.
+3. Nếu vẫn tự scrape: **chỉ dữ liệu công khai**, tôn trọng robots.txt/ToS, rate-limit, **không thu thập PII**.
+4. Lớp `DataSource` có cờ `reliability` + `coverage`; Intel Agent **ghi rõ nguồn nào tự động lấy được, phần nào là AI suy luận** — không hứa dữ liệu không khả thi.
+5. Tuân thủ Nghị định 13/2023; cho bật/tắt nguồn theo tenant kèm disclaimer rủi ro.
+
+> ⚠️ Tự scrape Trends/TikTok là **rủi ro pháp lý + kỹ thuật**. Khuyến nghị mặc định: nguồn chính thức + nhà cung cấp có giấy phép; coi scrape là phương án cuối, có rào chắn.
+
+---
+
+*Tài liệu này là bản nháp để thống nhất trước khi code. Mọi mục có thể điều chỉnh theo phản hồi. Các mục pháp lý chỉ mang tính định hướng kỹ thuật, không thay thế tư vấn luật.*
