@@ -289,13 +289,34 @@ Mỗi agent = một lời gọi Claude với **tool-use** (đọc/ghi DB qua cá
 | 2 | **Strategy** | Big Idea / Angle / Hook từ tình báo | IntelReport, Goal | Idea | `claude-opus-4-8` | hằng ngày |
 | 3 | **Content** | Sinh bài đa kênh theo brand voice | Idea, Service | Content | `claude-sonnet-4-6` | theo lịch |
 | 4 | **Publisher** | Lên lịch & đăng đa kênh | Content (APPROVED) | ScheduledPost, gọi API kênh | — (logic) | cron |
-| 5 | **Media Buyer (Ads)** | Tạo campaign/adset/ads | Idea, Content, Goal | AdCampaign + gọi Ads API | `claude-sonnet-4-6` | theo quyết định CEO |
-| 6 | **Optimizer** | Đọc metrics → tắt/tăng/nhân bản ads | AdMetricSnapshot | điều chỉnh AdCampaign (trong guardrail) | `claude-opus-4-8` | mỗi 3h |
+| 5 | **Media Buyer (Ads)** | Tạo campaign (ưu tiên Advantage+/Smart+), cấp creative gốc + dữ liệu sản phẩm; không micro-manage bid/targeting | Idea, Content, Goal | AdCampaign + gọi Ads API | `claude-sonnet-4-6` | theo quyết định CEO |
+| 6 | **Optimizer** | Quyết định **cấp danh mục campaign**: bật/tắt, tái phân bổ ngân sách xuyên nền tảng, nhân bản campaign thắng (xem 5.1) | AdMetricSnapshot | điều chỉnh AdCampaign (trong guardrail) | `claude-opus-4-8` | mỗi 3h |
 | 7 | **Social Care (Reply)** | Trả lời inbox/comment | Conversation, RAG kiến thức spa | trả lời + cập nhật Conversation | `claude-haiku-4-5` | realtime (webhook) |
 | 8 | **Lead Collector** | Phát hiện ý định, gom lead, chấm điểm | Conversation | Lead | `claude-haiku-4-5` | realtime |
 | 9 | **Analytics** | Tổng hợp hiệu suất + insight cho dashboard & CEO | metrics, Lead, ScheduledPost | báo cáo (Json) | `claude-sonnet-4-6` | hằng ngày |
 
 > "Sales follow-up" (nhắc lịch, chăm khách cũ) trong ngữ cảnh ranh-giới-tại-lead chủ yếu là **nhắc lead chưa bàn giao** + nhắn lại lead cũ chưa chuyển đổi; chăm sóc khách đã đến spa thuộc phần mềm spa.
+
+### 5.1. Chiến lược Ads: phân vai với AI của nền tảng (quan trọng)
+
+Năm 2026 các nền tảng đã tự động hoá phần lớn việc tối ưu ads bằng AI:
+- **Meta Advantage+ / Andromeda**: tự nhắm đối tượng, phân bổ ngân sách, vị trí, **bid**; **Advantage+ Creative** sinh & tối ưu biến thể creative (trung bình +22% ROAS).
+- **TikTok Smart+ / Symphony**: AI quản campaign (chọn creative, chỉnh bid, scale bài thắng); **Symphony Creative Studio** sinh video/script/avatar/lồng tiếng, tạo video từ URL sản phẩm, tự test creative.
+
+⇒ **Media Buyer & Optimizer KHÔNG đi làm lại bid/targeting/pacing** (sẽ thua nền tảng và phá learning phase). Giá trị của agent nằm ở các tầng nền tảng **không** lo:
+
+| Tầng | Nền tảng tự lo | Agent của mình |
+|---|---|---|
+| Bid / targeting / pacing | ✅ | ❌ không can thiệp vi mô |
+| Sinh & test biến thể creative | ✅ | Cấp **creative gốc chất lượng** + dữ liệu sản phẩm |
+| **Chiến lược** (đẩy dịch vụ nào, ngân sách/campaign, mở/tắt) | ❌ | ✅ theo mục tiêu tháng (vòng CEO) |
+| **Điều phối xuyên nền tảng** (dồn ngân sách Meta ↔ TikTok theo CPL/chất lượng lead) | ❌ | ✅ |
+| Guardrails (trần chi, kill-switch, tuân thủ) | ❌ | ✅ |
+| **Đóng vòng** (metrics → quyết định cấp campaign → báo cáo CEO + quy nguồn lead) | một phần | ✅ cấp portfolio |
+
+**Định vị lại Optimizer (mỗi 3h):** không tinh chỉnh bid; chỉ quyết định **cấp danh mục campaign** — bật/tắt campaign yếu, **tái phân bổ ngân sách giữa các nền tảng**, nhân bản campaign thắng, tổng hợp báo cáo cho CEO. Tránh thay đổi quá thường xuyên gây gãy learning phase.
+
+**Kỹ thuật:** tạo/điều chỉnh qua **Meta Marketing API** + **TikTok Business/Ads API** (Advantage+/Smart+ là loại campaign tạo được qua API). Vẫn cần tài khoản ads + ngân sách + app review.
 
 ### Tool-use cho agent (ví dụ)
 - Tool đọc: `get_goals`, `get_recent_metrics`, `get_pending_leads`, `search_competitors`...
