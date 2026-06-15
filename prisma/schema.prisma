@@ -1,0 +1,366 @@
+// AI-MOS cho Spa — Prisma schema (multi-tenant SaaS)
+// Mọi bảng nghiệp vụ đều mang tenantId; cô lập ở tầng truy vấn (xem src/lib/tenant.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Tenant & người dùng ─────────────────────────
+
+enum AutonomyLevel {
+  MANUAL
+  SEMI_AUTO
+  FULL_AUTO
+}
+
+enum Plan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum BusinessType {
+  SPA_NON_INVASIVE // spa/chăm sóc da không xâm lấn — chỉ ĐKKD, KHÔNG quảng cáo như y tế
+  AESTHETIC_MEDICAL // thẩm mỹ can thiệp y khoa — cần GP y tế + xác nhận nội dung
+  CLINIC // phòng khám/phẫu thuật — cần GP KCB + xác nhận nội dung
+}
+
+model Tenant {
+  id            String        @id @default(cuid())
+  name          String
+  timezone      String        @default("Asia/Ho_Chi_Minh")
+  businessType  BusinessType  @default(SPA_NON_INVASIVE)
+  autonomyLevel AutonomyLevel @default(FULL_AUTO)
+  plan          Plan          @default(BASIC)
+  brandVoice    String? // tone/giọng thương hiệu cho Content Agent
+  aiBudgetUsdDaily Float      @default(5) // trần chi phí AI/ngày
+  createdAt     DateTime      @default(now())
+
+  users         User[]
+  channels      Channel[]
+  services      Service[]
+  goals         Goal[]
+  intelReports  IntelReport[]
+  ideas         Idea[]
+  contents      Content[]
+  scheduledPosts ScheduledPost[]
+  adCampaigns   AdCampaign[]
+  adMetrics     AdMetricSnapshot[]
+  leads         Lead[]
+  conversations Conversation[]
+  agentRuns     AgentRun[]
+  approvals     ApprovalRequest[]
+  tasks         AgentTask[]
+  complianceDocs ComplianceDoc[]
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+model User {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email          String
+  name           String?
+  role           Role     @default(OWNER)
+  zaloUserId     String?
+  telegramChatId String?
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+// ───────────────────────── Kênh & dịch vụ ─────────────────────────
+
+enum ChannelType {
+  FACEBOOK_PAGE
+  INSTAGRAM
+  TIKTOK
+  ZALO_OA
+  META_ADS
+  TIKTOK_ADS
+}
+
+model Channel {
+  id           String      @id @default(cuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type         ChannelType
+  externalId   String // page id / oa id / ad account id
+  accessToken  String // LƯU MÃ HÓA (AES-GCM) — xem src/lib/crypto.ts
+  refreshToken String?
+  expiresAt    DateTime?
+  status       String      @default("active")
+  createdAt    DateTime    @default(now())
+
+  @@index([tenantId])
+}
+
+model Service {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  category  String?
+  priceFrom Int?
+  active    Boolean @default(true)
+
+  @@index([tenantId])
+}
+
+// ───────────────────────── Mục tiêu & vòng CEO ─────────────────────────
+
+enum GoalStatus {
+  PROPOSED
+  APPROVED
+  ACTIVE
+  DONE
+}
+
+model Goal {
+  id            String     @id @default(cuid())
+  tenantId      String
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  period        String // "2026-07"
+  serviceId     String?
+  targetLeads   Int?
+  targetCpaVnd  Int?
+  targetRevenue Int? // tham chiếu, KHÔNG phải doanh thu thật
+  status        GoalStatus @default(PROPOSED)
+  createdAt     DateTime   @default(now())
+
+  @@index([tenantId])
+}
+
+// Task CEO Agent giao cho các agent khác trong ngày
+model AgentTask {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent     String // "intel" | "strategy" | "content" | "ads" | ...
+  payload   Json
+  status    String   @default("pending") // pending | done | failed
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+}
+
+// ───────────────────────── Tình báo & ý tưởng ─────────────────────────
+
+model IntelReport {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  date      DateTime @default(now())
+  payload   Json // { competitors, trends, recommendation, sources, reliability }
+
+  @@index([tenantId])
+}
+
+model Idea {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bigIdea   String
+  angle     String?
+  hook      String?
+  serviceId String?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ───────────────────────── Nội dung & lịch đăng ─────────────────────────
+
+enum ContentKind {
+  EDUCATION
+  CASE_STUDY
+  FEEDBACK
+  PROMOTION
+  TREND
+}
+
+enum ContentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  REJECTED
+}
+
+model Content {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ideaId          String?
+  kind            ContentKind
+  channel         ChannelType
+  body            String
+  mediaUrls       String[]
+  status          ContentStatus @default(DRAFT)
+  complianceFlags String[] // cờ vi phạm/nhạy cảm do guardrail gắn
+  createdAt       DateTime      @default(now())
+
+  scheduledPosts ScheduledPost[]
+
+  @@index([tenantId, status])
+}
+
+model ScheduledPost {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contentId      String
+  content        Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  channelId      String
+  scheduledAt    DateTime
+  status         String   @default("pending") // pending | published | failed
+  externalPostId String?
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, status, scheduledAt])
+}
+
+// ───────────────────────── Ads ─────────────────────────
+
+model AdCampaign {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platform       ChannelType // META_ADS | TIKTOK_ADS
+  serviceId      String?
+  externalId     String?
+  objective      String      @default("LEADS")
+  dailyBudgetVnd Int
+  status         String      @default("draft") // draft | active | paused | archived
+  createdAt      DateTime    @default(now())
+
+  metrics AdMetricSnapshot[]
+
+  @@index([tenantId, status])
+}
+
+model AdMetricSnapshot {
+  id         String     @id @default(cuid())
+  tenantId   String
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campaignId String
+  campaign   AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  at         DateTime   @default(now())
+  spendVnd   Int?
+  ctr        Float?
+  cpl        Int?
+  cpm        Int?
+  frequency  Float?
+  roas       Float?
+  leads      Int?
+
+  @@index([tenantId, campaignId, at])
+}
+
+// ───────────────────────── Lead & hội thoại ─────────────────────────
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  HANDED_OFF
+  LOST
+}
+
+model Lead {
+  id               String     @id @default(cuid())
+  tenantId         String
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String?
+  phone            String?
+  need             String?
+  source           String? // ad/post/kênh nào → quy nguồn
+  score            Int?
+  status           LeadStatus @default(NEW)
+  closedRevenueVnd Int? // doanh thu phản hồi TÙY CHỌN
+  handedOffAt      DateTime?
+  createdAt        DateTime   @default(now())
+
+  conversation Conversation?
+
+  @@index([tenantId, status])
+}
+
+model Conversation {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel        ChannelType
+  externalUserId String
+  messages       Json // [{ role, text, at }]
+  leadId         String?     @unique
+  lead           Lead?       @relation(fields: [leadId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([tenantId, channel, externalUserId])
+  @@index([tenantId])
+}
+
+// ───────────────────────── Quan sát, duyệt, tuân thủ ─────────────────────────
+
+model AgentRun {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent           String
+  model           String
+  inputTokens     Int       @default(0)
+  outputTokens    Int       @default(0)
+  cacheReadTokens Int       @default(0)
+  costUsd         Float     @default(0)
+  status          String    @default("ok")
+  error           String?
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+
+  @@index([tenantId, agent, startedAt])
+}
+
+model ApprovalRequest {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind       String // "daily_decision" | "ad_spend" | "content"
+  refId      String? // id của Content/AdCampaign/... liên quan
+  payload    Json
+  decision   String? // approve | edit | reject
+  note       String?
+  expiresAt  DateTime
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, resolvedAt])
+}
+
+model ComplianceDoc {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind      String // "business_license" | "medical_license" | "ad_content_approval"
+  fileUrl   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
