@@ -1,69 +1,96 @@
-# autopost — AI Marketing Operating System (AI-MOS) cho Spa
+# TrendOS
 
-Nền tảng **SaaS đa spa**: một "agency marketing AI" tự vận hành 24/7 chạy trọn phễu
-từ nghiên cứu thị trường → ý tưởng → nội dung → đăng bài → ads → tối ưu → trả lời
-khách → gom lead. Ranh giới hệ thống dừng ở **lead**; đặt lịch/doanh thu thật nằm ở
-phần mềm quản lý spa riêng của khách hàng.
+**Hệ điều hành phát hiện xu hướng và sản xuất nội dung tự động.**
 
-> Tài liệu thiết kế đầy đủ: [docs/AI-MOS-DESIGN.md](docs/AI-MOS-DESIGN.md)
+> Phát hiện thứ đang được quan tâm trên Internet **trước đám đông** và tự động biến nó thành nội dung có khả năng lan truyền.
 
-## Tech stack
+---
 
-Next.js 15 (App Router) + TypeScript · Prisma + PostgreSQL · Anthropic SDK (Claude) ·
-cron scheduler (Vercel Cron) · connector kênh/ads (mock + interface cho live) ·
-notifier Zalo/Telegram.
-
-## Cấu trúc
+## TrendOS làm gì
 
 ```
-prisma/schema.prisma        Mô hình dữ liệu multi-tenant (10 agent, compliance, ads)
-prisma/seed.ts              Tạo spa demo + dịch vụ + kênh + campaign mẫu
-src/lib/anthropic.ts        Client Claude + phân tầng model + trần chi phí AI
-src/lib/agents/             10 agent: ceo, intel, strategy, content, ads, optimizer, reply, analytics
-src/lib/compliance/         Guardrail pháp lý quảng cáo làm đẹp VN
-src/lib/connectors/         Kênh (FB/IG/TikTok/Zalo) + Ads (Meta/TikTok) — mock + interface
-src/lib/notify/             Notifier Zalo/Telegram (mock console / Telegram thật)
-src/lib/orchestrator/       standup (giao ban 8h), optimize (3h), publisher
-src/app/                    Dashboard (Tổng quan/Nội dung/Lead/Ads/Mục tiêu) + API routes
-vercel.json                 Lịch cron 24/7
+   Nguồn dữ liệu          Phát hiện              Sản xuất
+   ─────────────          ──────────             ─────────
+   Google Trends  ─┐
+   X / Reddit      ├─►  Tín hiệu (Signal)  ─►  Chấm điểm   ─►  Cụm xu hướng  ─►  Sinh nội dung đa định dạng
+   YouTube/TikTok  │    chuẩn hoá              (momentum,      (Trend)           - Post MXH
+   RSS / HN        │                            độ mới,                          - Bài blog/SEO
+   GitHub         ─┘                            đa nguồn)                         - Kịch bản video
 ```
 
-## Chạy local
+TrendOS chạy theo một **pipeline** ba giai đoạn:
+
+1. **Collect** — Nhiều *collector* thu thập tín hiệu thô từ các nền tảng, chuẩn hoá về một dạng chung (`Signal`).
+2. **Detect** — Engine gom cụm tín hiệu thành xu hướng (`Trend`) và **chấm điểm theo đà tăng (velocity/acceleration)**, không chỉ theo độ phổ biến — đó là cách phát hiện *trước* đám đông.
+3. **Generate** — Với mỗi xu hướng điểm cao, sinh nội dung đa định dạng bằng Claude API.
+
+## Triết lý "trước đám đông"
+
+Một thứ đã viral thì ai cũng thấy. TrendOS ưu tiên **gia tốc** (tốc độ tăng đang nhanh dần) và **độ mới**, đồng thời thưởng điểm khi một chủ đề xuất hiện đồng thời trên nhiều nguồn. Chủ đề đã bão hoà (volume cao nhưng đà chững) bị giảm điểm. Logic này nằm ở `trendos/detection/scorer.py`.
+
+## Trạng thái hiện tại
+
+🚧 **Giai đoạn: Khung + kiến trúc.** Toàn bộ *interface*, domain model, pipeline và API đã được dựng. Các collector và generator hiện là **stub có TODO** — sẵn sàng để cài đặt chi tiết từng phần.
+
+Xem [ARCHITECTURE.md](./ARCHITECTURE.md) để hiểu thiết kế đầy đủ.
+
+## Bắt đầu nhanh
 
 ```bash
-cp .env.example .env          # điền DATABASE_URL, ANTHROPIC_API_KEY, CHANNEL_TOKEN_SECRET
-#   sinh secret: openssl rand -hex 32
-npm install
-npm run prisma:migrate        # tạo bảng (cần PostgreSQL)
-npm run db:seed               # tạo spa demo
-npm run dev                   # mở http://localhost:3000
+# 1. Cài đặt (Python 3.11+)
+pip install -e ".[dev]"
 
-# Chạy thủ công các nhịp agent (cần ANTHROPIC_API_KEY):
-npm run agent:standup         # họp giao ban: intel→strategy→content→CEO→cổng duyệt
-npm run agent:optimize        # tối ưu ads cấp danh mục
-npm run agent:publish         # đăng các bài tới hạn
+# 2. Cấu hình
+cp .env.example .env
+# điền ANTHROPIC_API_KEY và các API key nguồn dữ liệu
+
+# 3. Chạy pipeline thử (dùng collector stub trả dữ liệu mẫu)
+python -m trendos.cli run --dry-run
+
+# 4. Chạy API server
+uvicorn trendos.api.app:app --reload
+# mở http://localhost:8000/docs
 ```
 
-API: `POST /api/cron/standup`, `/api/cron/optimize`, `/api/cron/publish`
-(bảo vệ bằng header `x-cron-secret` hoặc `Authorization: Bearer <CRON_SECRET>`),
-webhook inbox `POST /api/webhooks/reply`, cổng duyệt `POST /api/approvals`,
-`GET /api/health`.
+## Cấu trúc thư mục
 
-## Ánh xạ Phase (đã triển khai khung)
+```
+trendos/
+├── config.py            # Cấu hình (pydantic-settings, đọc từ .env)
+├── models.py            # Domain models: Signal, Trend, ContentPiece
+├── collectors/          # Nguồn dữ liệu (mỗi nền tảng một file)
+│   ├── base.py          #   BaseCollector (interface)
+│   ├── google_trends.py, reddit.py, twitter.py, youtube.py,
+│   │   tiktok.py, hackernews.py, rss.py, github.py
+├── detection/           # Engine phát hiện xu hướng
+│   ├── scorer.py        #   Chấm điểm momentum/độ mới/đa nguồn
+│   ├── dedup.py         #   Gom cụm tín hiệu giống nhau
+│   └── ranker.py        #   Xếp hạng & lọc top
+├── generation/          # Sản xuất nội dung
+│   ├── base.py          #   BaseGenerator (interface)
+│   ├── claude_client.py #   Wrapper Anthropic SDK
+│   ├── prompts.py       #   Prompt theo từng định dạng
+│   ├── social_post.py, blog_article.py, video_script.py
+├── pipeline/
+│   └── orchestrator.py  # Nối collect → detect → generate
+├── storage/
+│   └── repository.py    # Lớp trừu tượng lưu trữ
+├── api/
+│   ├── app.py           # FastAPI app
+│   └── routes/          # /trends, /content
+└── cli.py               # Entry point dòng lệnh
+```
 
-| Phase | Trạng thái trong code |
-|---|---|
-| **0 — Nền tảng** | ✅ Next.js + Prisma multi-tenant + orchestrator + scheduler + guardrail/AgentRun |
-| **1 — Lõi nội dung** | ✅ CEO + Intel + Strategy + Content + Publisher (4 kênh, mock) + dashboard + bản tin |
-| **2 — Tương tác & lead** | ✅ Social Care (reply) + Lead Collector + webhook + trang Lead |
-| **3 — Ads loop** | ✅ Media Buyer + Optimizer + guardrail ngân sách (connector mock) |
-| **4 — Đóng vòng** | ✅ Analytics + dashboard + cổng duyệt Zalo/Telegram; doanh thu phản hồi tùy chọn |
+## Lộ trình
 
-## Chế độ connector
+- [x] Khung dự án + kiến trúc + interface
+- [ ] Cài đặt collector thật (bắt đầu: Hacker News + RSS — không cần API key)
+- [ ] Engine chấm điểm momentum với dữ liệu chuỗi thời gian
+- [ ] Generator nội dung qua Claude API
+- [ ] Lưu trữ bền (SQLite → Postgres)
+- [ ] Lập lịch chạy định kỳ
+- [ ] Dashboard web
 
-`CONNECTOR_MODE=mock` (mặc định) — sandbox, không gọi API thật (chờ app review
-FB/IG/TikTok/Zalo/Ads). Cắm connector `live` qua `registerChannelConnector` /
-`registerAdsConnector` khi có token hợp lệ.
+## Giấy phép
 
-> ⚠️ Kênh/Ads thật cần app review + token + ngân sách. Phần pháp lý là định hướng
-> kỹ thuật, **không thay tư vấn luật** — xem docs/AI-MOS-DESIGN.md mục 13.
+TBD
