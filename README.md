@@ -104,11 +104,12 @@ trendos/
 
 - [x] Khung dự án + kiến trúc + interface
 - [x] Khung dây chuyền 9 AI agent (interface `BaseAgent` + blackboard + orchestrator)
-- [ ] Cài đặt collector thật (bắt đầu: Hacker News + RSS — không cần API key)
-- [ ] Engine chấm điểm momentum với dữ liệu chuỗi thời gian
-- [ ] Cài đặt thật các agent ②–⑨ (Research, Strategist, Image, Video, Publisher, Analyst, Learning)
+- [x] Collector Hacker News + RSS (logic thật)
+- [x] Engine chấm điểm momentum (velocity/gia tốc/độ mới/bão hoà) + clustering
+- [x] Logic 9 agent: Research/Strategist/Copywriter (Claude), Image/Video/Publisher/Analyst (qua interface provider), Learning (heuristic)
+- [ ] Adapter provider thật (ảnh/video/đăng bài/analytics) + web search cho Research
 - [ ] Lưu trữ bền (SQLite → Postgres)
-- [ ] Lập lịch chạy định kỳ
+- [ ] Lập lịch chạy định kỳ + áp dụng `LearningUpdate` tự động
 - [ ] Dashboard web
 
 ## Giấy phép

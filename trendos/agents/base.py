@@ -17,6 +17,7 @@ from trendos.config import Settings
 from trendos.models import (
     ContentPiece,
     ContentPlan,
+    LearningUpdate,
     MediaAsset,
     PerformanceReport,
     Publication,
@@ -45,6 +46,7 @@ class PipelineContext:
     assets: list[MediaAsset] = field(default_factory=list)
     publications: list[Publication] = field(default_factory=list)
     reports: list[PerformanceReport] = field(default_factory=list)
+    learning: list[LearningUpdate] = field(default_factory=list)
 
 
 class BaseAgent(ABC):

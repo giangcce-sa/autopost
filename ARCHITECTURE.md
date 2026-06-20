@@ -209,4 +209,11 @@ class BaseAgent(ABC):
 
 ### 10.5 Trạng thái
 
-🟡 **① Trend Hunter** và **④ Copywriter** đã bọc code thật (momentum & sinh nội dung vẫn ở mức stub bên dưới). 🔴 **②③⑤⑥⑦⑧⑨** là stub có TODO. Dây chuyền chạy thông end-to-end ở `--dry-run`; agent thiếu cấu hình bị bỏ qua an toàn.
+Mọi agent đã **cài đặt logic thật** (không còn stub rỗng):
+
+- 🟢 **① Trend Hunter** — collectors HN/RSS thật + clustering Jaccard + momentum scorer (velocity/gia tốc/độ mới/bão hoà).
+- 🟢 **②③④** Research/Strategist/Copywriter — dùng Claude (structured output cho brief & plan; góc/tone chảy vào nội dung).
+- 🟢 **⑤⑥⑦⑧** Image/Video/Publisher/Analyst — logic hoàn chỉnh theo interface provider (`agents/providers.py`); **adapter thật chờ key** (tiêm provider để chạy/test).
+- 🟢 **⑨ Learning** — tổng hợp báo cáo → đề xuất chỉnh trọng số + ghi chú prompt (heuristic).
+
+Phụ thuộc ngoài còn thiếu trong môi trường hiện tại: mạng (collectors), `ANTHROPIC_API_KEY` (②③④⑧), key provider ảnh/video (⑤⑥), token đăng bài (⑦). Agent thiếu cấu hình bị **bỏ qua an toàn**; toàn bộ logic được kiểm chứng bằng test (mock/inject). Còn lại ở mức "cài thật": adapter provider, web search cho Research, và áp dụng `LearningUpdate` tự động.

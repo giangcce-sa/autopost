@@ -55,6 +55,7 @@ class Orchestrator:
             "assets": len(ctx.assets),
             "publications": len(ctx.publications),
             "reports": len(ctx.reports),
+            "learning_updates": len(ctx.learning),
             "top_trends": [
                 {"label": t.label, "score": round(t.score, 3)} for t in ctx.trends[:10]
             ],
