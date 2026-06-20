@@ -13,32 +13,17 @@ diễn đạt khác nhau của cùng chủ đề — interface `cluster_signals`
 
 from __future__ import annotations
 
-import re
-
 from trendos.models import Signal, Trend
+from trendos.text import tokenize
 
 # Ngưỡng Jaccard để xếp hai tín hiệu vào cùng cụm.
 _SIMILARITY_THRESHOLD = 0.3
 
-# Stopword tối thiểu (EN + một ít VI) — đủ cho gom cụm từ khoá.
-_STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for", "with",
-    "is", "are", "was", "were", "be", "this", "that", "it", "as", "at", "by",
-    "from", "how", "why", "what", "new", "show", "hn",
-    "và", "của", "các", "những", "một", "là", "có", "cho", "với", "khi",
-}
-
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
 
 def _tokens(signal: Signal) -> set[str]:
     """Tập token đại diện một tín hiệu (ưu tiên keyword, fallback tách tiêu đề)."""
-    if signal.keywords:
-        raw = " ".join(signal.keywords)
-    else:
-        raw = signal.title
-    toks = {t for t in _TOKEN_RE.findall(raw.lower()) if len(t) > 2 and t not in _STOPWORDS}
-    return toks
+    raw = " ".join(signal.keywords) if signal.keywords else signal.title
+    return set(tokenize(raw))
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
