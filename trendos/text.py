@@ -27,6 +27,17 @@ def tokenize(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall(text.lower()) if len(t) > 2 and t not in STOPWORDS]
 
 
+_HASHTAG_RE = re.compile(r"#[\wÀ-ỹ]+", re.UNICODE)
+
+
+def extract_hashtags(text: str) -> list[str]:
+    """Trích các hashtag (#...) trong văn bản, khử trùng giữ thứ tự."""
+    seen: dict[str, None] = {}
+    for tag in _HASHTAG_RE.findall(text):
+        seen.setdefault(tag, None)
+    return list(seen)
+
+
 def extract_keywords(text: str, *, limit: int = 10) -> list[str]:
     """Trích tối đa `limit` keyword (giữ thứ tự xuất hiện, khử trùng)."""
     seen: dict[str, None] = {}
