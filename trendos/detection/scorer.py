@@ -16,7 +16,7 @@ qua nhiều lần chạy. `history` truyền vào là các lần quan sát trư�
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from trendos.config import ScoringWeights
 from trendos.models import Signal, Trend
@@ -49,7 +49,7 @@ class TrendScorer:
             + self.w.cross_source * cross
             - self.w.saturation * saturation
         )
-        trend.updated_at = datetime.now(timezone.utc)
+        trend.updated_at = datetime.now(UTC)
         return trend
 
     # ─── Các thành phần điểm ─────────────────────────────────────────────

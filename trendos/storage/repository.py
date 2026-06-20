@@ -11,7 +11,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from trendos.models import ContentFormat, ContentPiece, Signal, Trend
+from trendos.models import (
+    ContentFormat,
+    ContentPiece,
+    ContentPlan,
+    MediaAsset,
+    PerformanceReport,
+    Publication,
+    ResearchBrief,
+    Signal,
+    Trend,
+)
 
 
 class Repository(ABC):
@@ -40,6 +50,22 @@ class Repository(ABC):
         self, *, trend_id: str | None = None, fmt: ContentFormat | None = None
     ) -> list[ContentPiece]: ...
 
+    # ─── Artifact của dây chuyền 9 agent ─────────────────────────────────
+    @abstractmethod
+    async def save_briefs(self, briefs: list[ResearchBrief]) -> None: ...
+
+    @abstractmethod
+    async def save_plans(self, plans: list[ContentPlan]) -> None: ...
+
+    @abstractmethod
+    async def save_assets(self, assets: list[MediaAsset]) -> None: ...
+
+    @abstractmethod
+    async def save_publications(self, publications: list[Publication]) -> None: ...
+
+    @abstractmethod
+    async def save_reports(self, reports: list[PerformanceReport]) -> None: ...
+
 
 class InMemoryRepository(Repository):
     """Backend lưu trong RAM — dùng cho dev/test và chế độ --dry-run.
@@ -51,6 +77,11 @@ class InMemoryRepository(Repository):
         self._signals: dict[str, list[Signal]] = {}  # dedup_key → lịch sử
         self._trends: dict[str, Trend] = {}
         self._content: list[ContentPiece] = []
+        self._briefs: list[ResearchBrief] = []
+        self._plans: list[ContentPlan] = []
+        self._assets: list[MediaAsset] = []
+        self._publications: list[Publication] = []
+        self._reports: list[PerformanceReport] = []
 
     async def save_signals(self, signals: list[Signal]) -> None:
         for sig in signals:
@@ -82,3 +113,18 @@ class InMemoryRepository(Repository):
         if fmt is not None:
             out = [c for c in out if c.format == fmt]
         return list(out)
+
+    async def save_briefs(self, briefs: list[ResearchBrief]) -> None:
+        self._briefs.extend(briefs)
+
+    async def save_plans(self, plans: list[ContentPlan]) -> None:
+        self._plans.extend(plans)
+
+    async def save_assets(self, assets: list[MediaAsset]) -> None:
+        self._assets.extend(assets)
+
+    async def save_publications(self, publications: list[Publication]) -> None:
+        self._publications.extend(publications)
+
+    async def save_reports(self, reports: list[PerformanceReport]) -> None:
+        self._reports.extend(reports)

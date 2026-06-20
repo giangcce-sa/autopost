@@ -24,6 +24,19 @@ TrendOS chạy theo một **pipeline** ba giai đoạn:
 2. **Detect** — Engine gom cụm tín hiệu thành xu hướng (`Trend`) và **chấm điểm theo đà tăng (velocity/acceleration)**, không chỉ theo độ phổ biến — đó là cách phát hiện *trước* đám đông.
 3. **Generate** — Với mỗi xu hướng điểm cao, sinh nội dung đa định dạng bằng Claude API.
 
+### Dây chuyền 9 AI Agent
+
+Trên ba giai đoạn đó, hệ thống được tổ chức thành **9 AI agent chuyên biệt** (tầng `agents/`):
+
+```
+① Trend Hunter → ② Research → ③ Content Strategist →┬→ ④ Copywriter
+                                                     ├→ ⑤ Image Creator
+                                                     └→ ⑥ Video Producer
+              ⑨ Learning ← ⑧ Analyst ← ⑦ Publisher ←──┘   (⑨ đóng vòng phản hồi)
+```
+
+Các agent trao đổi qua một bảng đen dùng chung (`PipelineContext`); orchestrator tuần tự gọi từng agent, bỏ qua agent chưa cấu hình. Chi tiết: [ARCHITECTURE.md §10](./ARCHITECTURE.md#10-kiến-trúc-9-ai-agent).
+
 ## Triết lý "trước đám đông"
 
 Một thứ đã viral thì ai cũng thấy. TrendOS ưu tiên **gia tốc** (tốc độ tăng đang nhanh dần) và **độ mới**, đồng thời thưởng điểm khi một chủ đề xuất hiện đồng thời trên nhiều nguồn. Chủ đề đã bão hoà (volume cao nhưng đà chững) bị giảm điểm. Logic này nằm ở `trendos/detection/scorer.py`.
@@ -57,7 +70,13 @@ uvicorn trendos.api.app:app --reload
 ```
 trendos/
 ├── config.py            # Cấu hình (pydantic-settings, đọc từ .env)
-├── models.py            # Domain models: Signal, Trend, ContentPiece
+├── models.py            # Domain models: Signal, Trend, ContentPiece + artifact 9 agent
+├── agents/              # ★ Tầng 9 AI agent (đứng trên các tầng capability)
+│   ├── base.py          #   BaseAgent (interface) + PipelineContext (blackboard)
+│   ├── trend_hunter.py  #   ① bọc collectors + detection
+│   ├── research.py, strategist.py, copywriter.py,
+│   │   image_creator.py, video_producer.py,
+│   │   publisher.py, analyst.py, learning.py   # ②–⑨
 ├── collectors/          # Nguồn dữ liệu (mỗi nền tảng một file)
 │   ├── base.py          #   BaseCollector (interface)
 │   ├── google_trends.py, reddit.py, twitter.py, youtube.py,
@@ -84,9 +103,10 @@ trendos/
 ## Lộ trình
 
 - [x] Khung dự án + kiến trúc + interface
+- [x] Khung dây chuyền 9 AI agent (interface `BaseAgent` + blackboard + orchestrator)
 - [ ] Cài đặt collector thật (bắt đầu: Hacker News + RSS — không cần API key)
 - [ ] Engine chấm điểm momentum với dữ liệu chuỗi thời gian
-- [ ] Generator nội dung qua Claude API
+- [ ] Cài đặt thật các agent ②–⑨ (Research, Strategist, Image, Video, Publisher, Analyst, Learning)
 - [ ] Lưu trữ bền (SQLite → Postgres)
 - [ ] Lập lịch chạy định kỳ
 - [ ] Dashboard web
