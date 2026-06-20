@@ -8,18 +8,18 @@ test độc lập. Xem ARCHITECTURE.md §2.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-class SourceName(str, Enum):
+class SourceName(StrEnum):
     """Định danh các nguồn dữ liệu được hỗ trợ."""
 
     HACKER_NEWS = "hacker_news"
@@ -32,12 +32,28 @@ class SourceName(str, Enum):
     TIKTOK = "tiktok"
 
 
-class ContentFormat(str, Enum):
+class ContentFormat(StrEnum):
     """Các định dạng nội dung TrendOS có thể sinh ra."""
 
     SOCIAL_POST = "social_post"
     BLOG_ARTICLE = "blog_article"
     VIDEO_SCRIPT = "video_script"
+
+
+class AssetType(StrEnum):
+    """Loại tài nguyên media do Image/Video agent tạo ra."""
+
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+
+
+class PublishStatus(StrEnum):
+    """Trạng thái một lần đăng bài (Publisher agent)."""
+
+    SCHEDULED = "scheduled"
+    PUBLISHED = "published"
+    FAILED = "failed"
 
 
 class Signal(BaseModel):
@@ -95,4 +111,83 @@ class ContentPiece(BaseModel):
     title: str
     body: str
     meta: dict[str, str] = Field(default_factory=dict, description="hashtag, CTA, SEO...")
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ─── Vật trung chuyển giữa các agent (dây chuyền 9 agent) ──────────────────
+# Mỗi model là output của một agent, làm input cho agent kế tiếp. Xem
+# ARCHITECTURE.md §10.
+
+
+class ResearchBrief(BaseModel):
+    """② Research AI: hồ sơ đào sâu một xu hướng (facts, nguồn, góc nhìn)."""
+
+    trend_id: str
+    summary: str = ""
+    facts: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    angles: list[str] = Field(default_factory=list, description="Các góc khai thác nội dung")
+    created_at: datetime = Field(default_factory=_now)
+
+
+class ContentPlanItem(BaseModel):
+    """Một hạng mục nội dung trong kế hoạch: định dạng + kênh + góc + tone."""
+
+    format: ContentFormat
+    channel: str = Field(..., description="Nền tảng đích, vd. 'facebook', 'tiktok'")
+    angle: str = ""
+    tone: str = ""
+
+
+class ContentPlan(BaseModel):
+    """③ Content Strategist AI: chiến lược nội dung cho một xu hướng."""
+
+    trend_id: str
+    items: list[ContentPlanItem] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_now)
+
+
+class MediaAsset(BaseModel):
+    """⑤/⑥ Image & Video AI: một tài nguyên media gắn với một mẩu nội dung."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    content_id: str
+    type: AssetType
+    uri: str = Field(..., description="Đường dẫn/URL tới file media")
+    meta: dict[str, str] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_now)
+
+
+class Publication(BaseModel):
+    """⑦ Publisher AI: một lần đăng/lên lịch một mẩu nội dung lên một nền tảng."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    content_id: str
+    platform: str
+    status: PublishStatus = PublishStatus.SCHEDULED
+    scheduled_at: datetime | None = None
+    external_url: str | None = None
+    created_at: datetime = Field(default_factory=_now)
+
+
+class PerformanceReport(BaseModel):
+    """⑧ Analyst AI: báo cáo hiệu suất sau khi đăng."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    publication_id: str
+    metrics: dict[str, float] = Field(default_factory=dict, description="reach, likes, shares...")
+    insights: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_now)
+
+
+class LearningUpdate(BaseModel):
+    """⑨ Learning AI: đề xuất tinh chỉnh để đóng vòng phản hồi."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    weight_adjustments: dict[str, float] = Field(
+        default_factory=dict, description="Điều chỉnh trọng số scorer"
+    )
+    prompt_notes: list[str] = Field(
+        default_factory=list, description="Gợi ý cải thiện prompt cho Copywriter/Strategist"
+    )
     created_at: datetime = Field(default_factory=_now)

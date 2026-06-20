@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     youtube_api_key: str = Field("", validation_alias="YOUTUBE_API_KEY")
     github_token: str = Field("", validation_alias="GITHUB_TOKEN")
 
+    # ─── Khoá provider cho agent media & đăng bài (rỗng = agent đó bị bỏ qua) ─
+    image_provider_key: str = Field("", validation_alias="IMAGE_PROVIDER_KEY")
+    video_provider_key: str = Field("", validation_alias="VIDEO_PROVIDER_KEY")
+    facebook_token: str = Field("", validation_alias="FACEBOOK_TOKEN")
+    tiktok_token: str = Field("", validation_alias="TIKTOK_TOKEN")
+
     # ─── RSS feeds mặc định (collector RSS) ──────────────────────────────
     rss_feeds: list[str] = Field(
         default_factory=lambda: [

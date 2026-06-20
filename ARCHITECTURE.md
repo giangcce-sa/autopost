@@ -151,3 +151,62 @@ Giai đoạn sau: chạy `orchestrator.run()` định kỳ (vd. mỗi 15 phút) 
 | Generator theo interface | Thêm định dạng mới không đụng phần khác |
 | Claude client tập trung | Một nơi quản model/thinking/streaming/chi phí |
 | API & CLI cùng gọi orchestrator | Không nhân đôi logic nghiệp vụ |
+
+---
+
+## 10. Kiến trúc 9 AI Agent
+
+Trên ba tầng chức năng (§3–§5), TrendOS được tổ chức thành một **dây chuyền 9 AI agent chuyên biệt** — một "nhà máy nội dung" chạy nối tiếp và có vòng học phản hồi. Tầng agent (`trendos/agents/`) **đứng trên** tầng capability: mỗi agent điều phối capability (collectors/detection/generation...) và thêm logic AI riêng.
+
+```
+① Trend Hunter → ② Research → ③ Content Strategist →┬→ ④ Copywriter ──┐
+                                                     ├→ ⑤ Image Creator┤
+                                                     └→ ⑥ Video Producer┘
+                                                              ↓
+              ⑨ Learning ← ⑧ Analyst ← ⑦ Publisher ←─────────┘
+                   └──── vòng phản hồi: tinh chỉnh ①③④ ────┘
+```
+
+### 10.1 Vai trò, loại AI và đầu vào → đầu ra
+
+| # | Agent (`agents/`) | Đầu vào → Đầu ra | Loại AI / công nghệ |
+|---|---|---|---|
+| ① | `trend_hunter.py` | Internet → `Trend[]` | Collectors + embedding/ML chấm điểm momentum |
+| ② | `research.py` | `Trend` → `ResearchBrief` | Claude + web search/fetch |
+| ③ | `strategist.py` | `ResearchBrief` → `ContentPlan` | Claude (planner/điều phối) |
+| ④ | `copywriter.py` | `ContentPlan` → `ContentPiece[]` | Claude (qua tầng `generation/`) |
+| ⑤ | `image_creator.py` | `ContentPiece` → `MediaAsset` (ảnh) | Text-to-image (provider ngoài) |
+| ⑥ | `video_producer.py` | script + ảnh → `MediaAsset` (video) | TTS + dựng video (provider ngoài) |
+| ⑦ | `publisher.py` | nội dung → `Publication` | API nền tảng + lên lịch |
+| ⑧ | `analyst.py` | `Publication` → `PerformanceReport` | Thu metric + Claude diễn giải |
+| ⑨ | `learning.py` | `PerformanceReport` → `LearningUpdate` | ML tối ưu + Claude (vòng phản hồi) |
+
+Ba "chất liệu AI" khác nhau: **LLM/Claude** (②③④⑧⑨), **embedding/ML** (① và tối ưu ở ⑨), **provider/API ngoài** (⑤⑥⑦). LLM chạy chọn lọc trên top-N để kiểm soát chi phí; tầng phân tích (①) rẻ và chạy số lượng lớn.
+
+### 10.2 Blackboard — `PipelineContext`
+
+Các agent không gọi trực tiếp lẫn nhau; chúng trao đổi qua một **bảng đen** dùng chung (`agents/base.py:PipelineContext`) mang mọi artifact: `trends`, `briefs`, `plans`, `content`, `assets`, `publications`, `reports`. Mỗi agent đọc artifact của agent trước và ghi artifact của mình. Ưu điểm: pipeline nhiều bước với kiểu dữ liệu khác nhau vẫn ghép nối gọn, thêm agent không phá interface chung.
+
+### 10.3 Interface & điều phối
+
+```python
+class BaseAgent(ABC):
+    name: ClassVar[str]
+    async def run(self, ctx: PipelineContext) -> None: ...   # đọc/ghi ctx
+    def is_ready(self, settings) -> bool: ...                # check khoá/provider
+```
+
+`agents/__init__.py:AGENT_PIPELINE` giữ thứ tự ①→⑨. `pipeline/orchestrator.py` là **nhạc trưởng mỏng**: lặp danh sách này, bỏ qua agent `is_ready()==False`, gọi `run(ctx)` trong khối bắt lỗi (cô lập lỗi từng agent). `--dry-run` chỉ chạy `DRY_RUN_AGENTS` (Trend Hunter — không gọi Claude/provider).
+
+### 10.4 Quan hệ với tầng capability
+
+| Agent | Bọc capability nào |
+|---|---|
+| ① Trend Hunter | `collectors/` + `detection/` (toàn bộ logic collect→cluster→score→rank) |
+| ④ Copywriter | `generation/` (chọn generator theo `ContentPlan.items[].format`) |
+| ②③⑧⑨ | `generation/claude_client.py` (gọi Claude) |
+| ⑤⑥⑦ | provider/API ngoài (chưa có capability nội bộ) |
+
+### 10.5 Trạng thái
+
+🟡 **① Trend Hunter** và **④ Copywriter** đã bọc code thật (momentum & sinh nội dung vẫn ở mức stub bên dưới). 🔴 **②③⑤⑥⑦⑧⑨** là stub có TODO. Dây chuyền chạy thông end-to-end ở `--dry-run`; agent thiếu cấu hình bị bỏ qua an toàn.
