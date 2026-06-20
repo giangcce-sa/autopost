@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import ClassVar
 
 from trendos.generation.claude_client import ClaudeClient
-from trendos.models import ContentFormat, ContentPiece, Trend
+from trendos.models import ContentFormat, ContentPiece, ContentPlanItem, Trend
 
 
 class BaseGenerator(ABC):
@@ -21,5 +21,8 @@ class BaseGenerator(ABC):
         self.client = client
 
     @abstractmethod
-    async def generate(self, trend: Trend) -> ContentPiece:
-        """Sinh một mẩu nội dung cho xu hướng đã cho."""
+    async def generate(self, trend: Trend, item: ContentPlanItem | None = None) -> ContentPiece:
+        """Sinh một mẩu nội dung cho xu hướng.
+
+        `item` (tuỳ chọn) mang định hướng từ Content Strategist (góc/tone/kênh).
+        """
