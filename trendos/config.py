@@ -21,11 +21,19 @@ class ScoringWeights(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TRENDOS_WEIGHT_")
 
+    # Trọng số tổ hợp
     velocity: float = 1.0
     acceleration: float = 2.0   # tín hiệu sớm — trọng số cao nhất
     novelty: float = 1.5
     cross_source: float = 1.0
     saturation: float = 1.0     # trừ điểm
+
+    # Tham số chuẩn hoá (đưa các đại lượng thô về ~[0,1] để trọng số có ý nghĩa).
+    # Đều tinh chỉnh được; giá trị mặc định là heuristic khởi đầu.
+    velocity_scale: float = 10.0      # tốc độ tăng (đơn vị/giờ) cho ~0.76 sau tanh
+    acceleration_scale: float = 5.0   # gia tốc cho ~0.76 sau tanh
+    novelty_tau_hours: float = 24.0   # hằng số phân rã độ mới (exp(-age/tau))
+    saturation_cap: float = 1000.0    # volume coi như "đã bão hoà"
 
 
 class Settings(BaseSettings):
