@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from textwrap import shorten
+
 from trendos.generation.base import BaseGenerator
 from trendos.generation.prompts import blog_article_prompt
 from trendos.models import ContentFormat, ContentPiece, ContentPlanItem, Trend
@@ -17,7 +19,7 @@ class BlogArticleGenerator(BaseGenerator):
         # Bài dài → stream để tránh timeout HTTP.
         body = await self.client.complete(user, system=system, max_tokens=4096, stream=True)
         meta = {"channel": item.channel} if item and item.channel else {}
-        # TODO(impl): tách meta description ra ContentPiece.meta["meta_description"].
+        meta["meta_description"] = shorten(" ".join(body.split()), width=160, placeholder="...")
         return ContentPiece(
             trend_id=trend.id,
             format=self.format,

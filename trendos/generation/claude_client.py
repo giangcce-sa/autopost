@@ -9,9 +9,10 @@ Mặc định theo khuyến nghị của Anthropic:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from anthropic import APIStatusError, AsyncAnthropic
 
 from trendos.config import Settings
 
@@ -75,9 +76,47 @@ class ClaudeClient:
         }
         if system:
             kwargs["system"] = system
-        msg = await self._client.messages.create(**kwargs)
-        return json.loads(self._text(msg))
+        try:
+            msg = await self._client.messages.create(**kwargs)
+            return self._json_from_text(self._text(msg))
+        except (TypeError, APIStatusError) as exc:
+            if not self._should_fallback_structured_output(exc):
+                raise
+
+        fallback_prompt = (
+            f"{prompt}\n\n"
+            "Trả về DUY NHẤT một JSON object hợp lệ theo schema sau, không markdown, "
+            f"không giải thích:\n{json.dumps(schema, ensure_ascii=False)}"
+        )
+        fallback_text = await self.complete(
+            fallback_prompt,
+            system=system,
+            max_tokens=max_tokens,
+            stream=False,
+        )
+        return self._json_from_text(fallback_text)
 
     @staticmethod
     def _text(msg: Any) -> str:
         return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
+
+    @staticmethod
+    def _json_from_text(text: str) -> Any:
+        text = text.strip()
+        if not text:
+            raise ValueError("Claude returned empty JSON response")
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+            if match is None:
+                raise
+            return json.loads(match.group(0))
+
+    @staticmethod
+    def _should_fallback_structured_output(exc: Exception) -> bool:
+        if isinstance(exc, TypeError):
+            return "output_config" in str(exc)
+        if isinstance(exc, APIStatusError):
+            return exc.status_code == 400 and "output_config" in str(exc).lower()
+        return False

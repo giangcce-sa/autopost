@@ -43,7 +43,11 @@ Một thứ đã viral thì ai cũng thấy. TrendOS ưu tiên **gia tốc** (t�
 
 ## Trạng thái hiện tại
 
-🚧 **Giai đoạn: Khung + kiến trúc.** Toàn bộ *interface*, domain model, pipeline và API đã được dựng. Các collector và generator hiện là **stub có TODO** — sẵn sàng để cài đặt chi tiết từng phần.
+✅ **Giai đoạn: MVP kỹ thuật có thể chạy.** Pipeline collect → detect → generate
+→ media → publish → analytics đã có đường chạy end-to-end. HN/RSS/GitHub chạy
+thật; Reddit/YouTube/X cần API key; TikTok cần provider riêng. Media/publish/
+analytics có adapter `local` an toàn để phát triển và test không tác động nền
+tảng thật.
 
 Xem [ARCHITECTURE.md](./ARCHITECTURE.md) để hiểu thiết kế đầy đủ.
 
@@ -57,12 +61,48 @@ pip install -e ".[dev]"
 cp .env.example .env
 # điền ANTHROPIC_API_KEY và các API key nguồn dữ liệu
 
-# 3. Chạy pipeline thử (dùng collector stub trả dữ liệu mẫu)
+# 3. Chạy pipeline thử
 python -m trendos.cli run --dry-run
 
 # 4. Chạy API server
 uvicorn trendos.api.app:app --reload
-# mở http://localhost:8000/docs
+# mở http://localhost:8000/dashboard hoặc http://localhost:8000/docs
+```
+
+### Chạy full local pipeline
+
+```env
+IMAGE_PROVIDER_KEY=local
+VIDEO_PROVIDER_KEY=local
+PUBLISH_PROVIDER_KEY=local
+ANALYTICS_PROVIDER_KEY=local
+OUTPUT_DIR=trendos_output
+ANTHROPIC_API_KEY=...
+```
+
+Production provider có thể cắm bằng import path:
+
+```env
+PUBLISH_PROVIDER_KEY=my_project.providers:MetaPublishProvider
+```
+
+Provider class/factory nhận không tham số hoặc nhận một tham số `Settings`.
+
+```bash
+python -m trendos.cli run --full
+```
+
+### Bảo vệ API/Dashboard
+
+Set `API_KEY` trong `.env`, sau đó gửi `X-TrendOS-Key` hoặc
+`Authorization: Bearer <key>` cho dashboard/write endpoints.
+
+### Quality gate
+
+```bash
+python -m pytest -q
+python -m ruff check .
+python -m mypy trendos
 ```
 
 ## Cấu trúc thư mục
@@ -108,10 +148,16 @@ trendos/
 - [x] Engine chấm điểm momentum (velocity/gia tốc/độ mới/bão hoà) + clustering
 - [x] Logic 9 agent: Research/Strategist/Copywriter (Claude), Image/Video/Publisher/Analyst (qua interface provider), Learning (heuristic)
 - [x] Lưu trữ bền bằng SQLite (`SqliteRepository`) — lưu lịch sử metric cho velocity/acceleration
-- [ ] Adapter provider thật (ảnh/video/đăng bài/analytics) + web search cho Research
-- [ ] Collector còn lại (Google Trends/X/YouTube/TikTok) + đổi sang Postgres khi cần
-- [ ] Lập lịch chạy định kỳ + áp dụng `LearningUpdate` tự động
-- [ ] Dashboard web
+- [x] Adapter local cho ảnh/video/đăng bài/analytics + dashboard web cơ bản
+- [x] Google Trends/X/YouTube collector ở mức production-safe; TikTok chờ provider ổn định
+- [x] Lập lịch chạy định kỳ đơn giản + run tracking
+- [x] Cơ chế cắm adapter production qua import path cấu hình
+- [x] Dashboard quản trị cơ bản: runs, trends, content, trend detail, nút chạy pipeline
+- [x] API auth, pagination, health details, schema versioning, Docker, CI, runbook
+
+Các tích hợp đăng thật Meta/TikTok/YouTube, image/video SaaS và analytics thật
+cần credential, app approval và chính sách publish cụ thể trước khi bật trong
+môi trường production.
 
 ## Giấy phép
 

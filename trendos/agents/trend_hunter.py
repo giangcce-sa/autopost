@@ -14,7 +14,7 @@ import logging
 from trendos.agents.base import BaseAgent, PipelineContext
 from trendos.collectors import ALL_COLLECTORS, BaseCollector
 from trendos.detection import TrendScorer, cluster_signals, rank_and_filter
-from trendos.models import Signal
+from trendos.models import Signal, Trend
 
 log = logging.getLogger("trendos.agent.trend_hunter")
 
@@ -30,6 +30,7 @@ class TrendHunterAgent(BaseAgent):
         history = await ctx.repo.get_signal_history(
             [sig.dedup_key for t in trends for sig in t.signals]
         )
+        trends = [await self._merge_existing(ctx, trend) for trend in trends]
         scorer = TrendScorer(ctx.settings.scoring_weights)
         for trend in trends:
             scorer.score(trend, history)
@@ -42,6 +43,17 @@ class TrendHunterAgent(BaseAgent):
         await ctx.repo.save_trends(ranked)
         ctx.trends = ranked
         log.info("Phát hiện %d xu hướng (từ %d tín hiệu)", len(ranked), len(signals))
+
+    @staticmethod
+    async def _merge_existing(ctx: PipelineContext, trend: Trend) -> Trend:
+        if not trend.trend_key:
+            return trend
+        existing = await ctx.repo.get_trend_by_key(trend.trend_key)
+        if existing is None:
+            return trend
+        trend.id = existing.id
+        trend.first_seen = min(existing.first_seen, trend.first_seen)
+        return trend
 
     async def _collect(self, ctx: PipelineContext) -> list[Signal]:
         collectors: list[BaseCollector] = [c(ctx.settings) for c in ALL_COLLECTORS]

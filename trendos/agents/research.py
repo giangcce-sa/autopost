@@ -57,8 +57,8 @@ class ResearchAgent(BaseAgent):
                 "Hãy nghiên cứu xu hướng này: tóm tắt nó là gì, các sự thật chính, "
                 "nguồn nên tham khảo, và 3-5 góc khai thác nội dung."
             )
-            # TODO(impl): bật server tool web_search để xác minh facts/nguồn theo
-            #   thời gian thực (cần mạng + xử lý pause_turn).
+            # Realtime fact checking belongs in a separate research provider because
+            # it needs a browsing/tool runtime and source policy.
             data = await client.complete_json(prompt, schema=_BRIEF_SCHEMA, system=_SYSTEM)
             return ResearchBrief(
                 trend_id=trend.id,

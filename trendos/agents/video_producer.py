@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from trendos.agents.base import BaseAgent, PipelineContext
+from trendos.agents.local_providers import LocalVideoProvider
 from trendos.agents.providers import ProviderNotConfigured, VideoProvider
 from trendos.models import AssetType, ContentFormat, ContentPiece, MediaAsset
+from trendos.provider_loader import load_provider
 
 log = logging.getLogger("trendos.agent.video_producer")
 
@@ -23,16 +26,21 @@ class VideoProducerAgent(BaseAgent):
         self._provider = provider
 
     def is_ready(self, settings) -> bool:
-        return bool(settings.video_provider_key)
+        return self._provider is not None or bool(settings.video_provider_key)
 
-    def _resolve(self) -> VideoProvider:
+    def _resolve(self, ctx: PipelineContext) -> VideoProvider:
         if self._provider is not None:
             return self._provider
-        # TODO(impl): dựng adapter thật (vd. TTS ElevenLabs + ffmpeg/Shotstack).
-        raise ProviderNotConfigured("Chưa có adapter VideoProvider — hãy tiêm provider")
+        if ctx.settings.video_provider_key == "local":
+            return LocalVideoProvider(ctx.settings.output_dir)
+        if ctx.settings.video_provider_key:
+            return cast(VideoProvider, load_provider(ctx.settings.video_provider_key, ctx.settings))
+        raise ProviderNotConfigured(
+            "Chưa cấu hình VideoProvider. Dùng VIDEO_PROVIDER_KEY=local hoặc import path."
+        )
 
     async def run(self, ctx: PipelineContext) -> None:
-        provider = self._resolve()
+        provider = self._resolve(ctx)
         scripts = [c for c in ctx.content if c.format == ContentFormat.VIDEO_SCRIPT]
         image_uris = [a.uri for a in ctx.assets if a.type == AssetType.IMAGE]
 

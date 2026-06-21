@@ -94,6 +94,62 @@ def test_derive_insights_rules():
     assert "Tương tác thấp" in derive_insights({"engagement_rate": 0.01})
 
 
+def test_provider_agents_not_ready_without_injected_adapter():
+    settings = get_settings()
+    assert not ImageCreatorAgent().is_ready(settings)
+    assert not VideoProducerAgent().is_ready(settings)
+    assert not PublisherAgent().is_ready(settings)
+    assert not AnalystAgent().is_ready(settings)
+    assert ImageCreatorAgent(provider=FakeImage()).is_ready(settings)
+    assert VideoProducerAgent(provider=FakeVideo()).is_ready(settings)
+    assert PublisherAgent(provider=FakePublish()).is_ready(settings)
+    assert AnalystAgent(provider=FakeAnalytics()).is_ready(settings)
+
+
+def test_provider_agents_ready_with_import_path_config():
+    settings = get_settings().model_copy(
+        update={
+            "image_provider_key": "trendos.agents.local_providers:image_provider",
+            "video_provider_key": "trendos.agents.local_providers:video_provider",
+            "publish_provider_key": "trendos.agents.local_providers:publish_provider",
+            "analytics_provider_key": "trendos.agents.local_providers:analytics_provider",
+        }
+    )
+    assert ImageCreatorAgent().is_ready(settings)
+    assert VideoProducerAgent().is_ready(settings)
+    assert PublisherAgent().is_ready(settings)
+    assert AnalystAgent().is_ready(settings)
+
+
+@pytest.mark.asyncio
+async def test_local_provider_adapters_create_artifacts(tmp_path):
+    settings = get_settings().model_copy(
+        update={
+            "image_provider_key": "local",
+            "video_provider_key": "local",
+            "publish_provider_key": "local",
+            "analytics_provider_key": "local",
+            "output_dir": str(tmp_path),
+        }
+    )
+    ctx = PipelineContext(settings=settings, repo=InMemoryRepository())
+    ctx.content = [
+        _piece(ContentFormat.SOCIAL_POST, channel="local"),
+        _piece(ContentFormat.VIDEO_SCRIPT, channel="local"),
+    ]
+
+    await ImageCreatorAgent().run(ctx)
+    await VideoProducerAgent().run(ctx)
+    await PublisherAgent().run(ctx)
+    await AnalystAgent().run(ctx)
+
+    assert len(ctx.assets) == 2
+    assert len(ctx.publications) == 2
+    assert len(ctx.reports) == 2
+    assert all(a.uri for a in ctx.assets)
+    assert all(p.external_url for p in ctx.publications)
+
+
 # ─── ⑨ Learning ────────────────────────────────────────────────────────────
 
 

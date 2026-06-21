@@ -48,7 +48,7 @@ class RSSCollector(BaseCollector):
 
     async def collect(self) -> list[Signal]:
         try:
-            import feedparser  # lazy: chỉ cần khi thật sự chạy RSS
+            import feedparser  # type: ignore[import-untyped]  # lazy: chỉ cần khi chạy RSS
         except ImportError:
             log.info("feedparser chưa cài (pip install 'trendos[sources]') — bỏ qua RSS")
             return []

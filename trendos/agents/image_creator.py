@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from trendos.agents.base import BaseAgent, PipelineContext
+from trendos.agents.local_providers import LocalImageProvider
 from trendos.agents.providers import ImageProvider, ProviderNotConfigured
 from trendos.models import AssetType, ContentFormat, ContentPiece, MediaAsset
+from trendos.provider_loader import load_provider
 
 log = logging.getLogger("trendos.agent.image_creator")
 
@@ -26,17 +29,21 @@ class ImageCreatorAgent(BaseAgent):
         self._provider = provider
 
     def is_ready(self, settings) -> bool:
-        # Cần khoá provider ảnh; chưa có → bỏ qua an toàn ở orchestrator.
-        return bool(settings.image_provider_key)
+        return self._provider is not None or bool(settings.image_provider_key)
 
-    def _resolve(self) -> ImageProvider:
+    def _resolve(self, ctx: PipelineContext) -> ImageProvider:
         if self._provider is not None:
             return self._provider
-        # TODO(impl): dựng adapter thật từ settings (vd. Stability/DALL·E).
-        raise ProviderNotConfigured("Chưa có adapter ImageProvider — hãy tiêm provider")
+        if ctx.settings.image_provider_key == "local":
+            return LocalImageProvider(ctx.settings.output_dir)
+        if ctx.settings.image_provider_key:
+            return cast(ImageProvider, load_provider(ctx.settings.image_provider_key, ctx.settings))
+        raise ProviderNotConfigured(
+            "Chưa cấu hình ImageProvider. Dùng IMAGE_PROVIDER_KEY=local hoặc import path."
+        )
 
     async def run(self, ctx: PipelineContext) -> None:
-        provider = self._resolve()
+        provider = self._resolve(ctx)
         targets = [c for c in ctx.content if c.format in _NEEDS_IMAGE]
 
         async def _make(piece: ContentPiece) -> MediaAsset:

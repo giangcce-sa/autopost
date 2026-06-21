@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from trendos.agents.base import BaseAgent, PipelineContext
+from trendos.agents.local_providers import LocalPublishProvider
 from trendos.agents.providers import ProviderNotConfigured, PublishProvider
 from trendos.models import ContentPiece, MediaAsset, Publication, PublishStatus
+from trendos.provider_loader import load_provider
 
 log = logging.getLogger("trendos.agent.publisher")
 
@@ -23,24 +26,24 @@ class PublisherAgent(BaseAgent):
         self._provider = provider
 
     def is_ready(self, settings) -> bool:
-        return any(
-            [
-                settings.facebook_token,
-                settings.twitter_bearer_token,
-                settings.youtube_api_key,
-                settings.tiktok_token,
-            ]
-        )
+        return self._provider is not None or bool(settings.publish_provider_key)
 
-    def _resolve(self) -> PublishProvider:
+    def _resolve(self, ctx: PipelineContext) -> PublishProvider:
         if self._provider is not None:
             return self._provider
-        # TODO(impl): dựng adapter thật (Meta Graph API, X API, YouTube, ...).
-        # Lưu ý: đăng bài là hành động khó đảo ngược — cân nhắc cổng xác nhận.
-        raise ProviderNotConfigured("Chưa có adapter PublishProvider — hãy tiêm provider")
+        if ctx.settings.publish_provider_key == "local":
+            return LocalPublishProvider(ctx.settings.output_dir)
+        if ctx.settings.publish_provider_key:
+            return cast(
+                PublishProvider,
+                load_provider(ctx.settings.publish_provider_key, ctx.settings),
+            )
+        raise ProviderNotConfigured(
+            "Chưa cấu hình PublishProvider. Dùng PUBLISH_PROVIDER_KEY=local hoặc import path."
+        )
 
     async def run(self, ctx: PipelineContext) -> None:
-        provider = self._resolve()
+        provider = self._resolve(ctx)
         assets_by_content: dict[str, list[MediaAsset]] = {}
         for a in ctx.assets:
             assets_by_content.setdefault(a.content_id, []).append(a)

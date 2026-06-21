@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from trendos.agents.base import BaseAgent, PipelineContext
+from trendos.agents.local_providers import LocalAnalyticsProvider
 from trendos.agents.providers import AnalyticsProvider, ProviderNotConfigured
 from trendos.models import PerformanceReport, Publication
+from trendos.provider_loader import load_provider
 
 log = logging.getLogger("trendos.agent.analyst")
 
@@ -34,17 +37,27 @@ class AnalystAgent(BaseAgent):
     def __init__(self, provider: AnalyticsProvider | None = None) -> None:
         self._provider = provider
 
-    def _resolve(self) -> AnalyticsProvider:
+    def is_ready(self, settings) -> bool:
+        return self._provider is not None or bool(settings.analytics_provider_key)
+
+    def _resolve(self, ctx: PipelineContext) -> AnalyticsProvider:
         if self._provider is not None:
             return self._provider
-        # TODO(impl): dựng adapter thật đọc analytics từng nền tảng.
-        raise ProviderNotConfigured("Chưa có adapter AnalyticsProvider — hãy tiêm provider")
+        if ctx.settings.analytics_provider_key == "local":
+            return LocalAnalyticsProvider()
+        if ctx.settings.analytics_provider_key:
+            return cast(
+                AnalyticsProvider, load_provider(ctx.settings.analytics_provider_key, ctx.settings)
+            )
+        raise ProviderNotConfigured(
+            "Chưa cấu hình AnalyticsProvider. Dùng ANALYTICS_PROVIDER_KEY=local hoặc import path."
+        )
 
     async def run(self, ctx: PipelineContext) -> None:
         if not ctx.publications:
             log.info("Analyst: chưa có bài đăng để phân tích — bỏ qua")
             return
-        provider = self._resolve()
+        provider = self._resolve(ctx)
 
         async def _report(pub: Publication) -> PerformanceReport:
             metrics = await provider.fetch(pub)

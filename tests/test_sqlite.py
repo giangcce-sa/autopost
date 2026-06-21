@@ -7,7 +7,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from trendos.config import Settings
-from trendos.models import ContentFormat, ContentPiece, Signal, SourceName, Trend
+from trendos.models import (
+    AssetType,
+    ContentFormat,
+    ContentPiece,
+    MediaAsset,
+    PipelineRun,
+    PipelineRunStatus,
+    Signal,
+    SourceName,
+    Trend,
+)
 from trendos.storage import InMemoryRepository, SqliteRepository, get_repository
 
 
@@ -97,6 +107,34 @@ async def test_save_content_roundtrip_with_filters(repo: SqliteRepository):
     assert len(await repo.list_content(trend_id="t1")) == 1
     by_fmt = await repo.list_content(fmt=ContentFormat.BLOG_ARTICLE)
     assert len(by_fmt) == 1 and by_fmt[0].trend_id == "t2"
+
+
+@pytest.mark.asyncio
+async def test_save_run_roundtrip_ordered_by_created(repo: SqliteRepository):
+    old = PipelineRun(status=PipelineRunStatus.COMPLETED)
+    new = PipelineRun(status=PipelineRunStatus.RUNNING)
+    await repo.save_run(old)
+    await repo.save_run(new)
+
+    assert (await repo.get_run(new.id)) is not None
+    runs = await repo.list_runs()
+    assert runs[0].id == new.id
+
+
+@pytest.mark.asyncio
+async def test_artifact_lists_support_filters(repo: SqliteRepository):
+    asset = MediaAsset(content_id="c1", type=AssetType.IMAGE, uri="file://x.png")
+    other = MediaAsset(content_id="c2", type=AssetType.IMAGE, uri="file://y.png")
+    await repo.save_assets([asset, other])
+
+    assert len(await repo.list_assets()) == 2
+    filtered = await repo.list_assets(content_id="c1")
+    assert len(filtered) == 1 and filtered[0].uri == "file://x.png"
+
+
+@pytest.mark.asyncio
+async def test_schema_version_is_recorded(repo: SqliteRepository):
+    assert await repo.schema_version() >= 1
 
 
 def test_get_repository_selects_backend(tmp_path):

@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from trendos.config import ScoringWeights
+from trendos.agents.base import PipelineContext
+from trendos.config import ScoringWeights, get_settings
 from trendos.detection import TrendScorer, cluster_signals, rank_and_filter
 from trendos.models import Signal, SourceName, Trend
 from trendos.storage import InMemoryRepository
@@ -78,6 +79,30 @@ def test_velocity_positive_when_metric_grows_over_time():
     assert trend.momentum > 0  # velocity đã được tính từ chuỗi thời gian
 
 
+def test_reddit_upvotes_metric_drives_velocity():
+    """Metric Reddit collector ghi là upvotes; scorer phải đọc đúng tên này."""
+    scorer = TrendScorer(ScoringWeights())
+    t0 = datetime.now(UTC) - timedelta(hours=2)
+    t1 = datetime.now(UTC) - timedelta(hours=1)
+    old = Signal(
+        source=SourceName.REDDIT,
+        external_id="r1",
+        title="x",
+        metrics={"upvotes": 10, "comments": 2},
+        captured_at=t0,
+    )
+    new = Signal(
+        source=SourceName.REDDIT,
+        external_id="r1",
+        title="x",
+        metrics={"upvotes": 100, "comments": 3},
+        captured_at=t1,
+    )
+    trend = Trend(label="x", signals=[new])
+    scorer.score(trend, history={new.dedup_key: [old, new]})
+    assert trend.momentum > 0.9
+
+
 def test_novelty_decays_with_age():
     """Xu hướng cũ có novelty thấp hơn xu hướng vừa xuất hiện."""
     scorer = TrendScorer(ScoringWeights())
@@ -107,3 +132,50 @@ async def test_in_memory_repo_keeps_signal_history():
     await repo.save_signals([s2])
     history = await repo.get_signal_history([s1.dedup_key])
     assert len(history[s1.dedup_key]) == 2  # giữ chuỗi thời gian cho scorer
+
+
+@pytest.mark.asyncio
+async def test_trend_hunter_preserves_first_seen_for_existing_trend(monkeypatch):
+    """Cùng trend qua lần chạy sau phải giữ first_seen cũ để novelty phân rã."""
+    from trendos.agents.trend_hunter import TrendHunterAgent
+
+    t0 = datetime.now(UTC) - timedelta(days=2)
+    t1 = datetime.now(UTC)
+
+    async def first_collect(self, ctx):
+        return [
+            Signal(
+                source=SourceName.HACKER_NEWS,
+                external_id="1",
+                title="OpenAI launches agent framework",
+                metrics={"score": 5},
+                captured_at=t0,
+            )
+        ]
+
+    async def second_collect(self, ctx):
+        return [
+            Signal(
+                source=SourceName.HACKER_NEWS,
+                external_id="1",
+                title="OpenAI launches agent framework",
+                metrics={"score": 10},
+                captured_at=t1,
+            )
+        ]
+
+    settings = get_settings().model_copy(update={"min_trend_score": -1.0})
+    repo = InMemoryRepository()
+    ctx = PipelineContext(settings=settings, repo=repo)
+
+    monkeypatch.setattr(TrendHunterAgent, "_collect", first_collect)
+    await TrendHunterAgent().run(ctx)
+    first = ctx.trends[0]
+
+    monkeypatch.setattr(TrendHunterAgent, "_collect", second_collect)
+    await TrendHunterAgent().run(ctx)
+    second = ctx.trends[0]
+
+    assert second.id == first.id
+    assert second.first_seen == first.first_seen
+    assert second.novelty < 0.2

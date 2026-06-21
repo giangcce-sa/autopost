@@ -13,6 +13,8 @@ diễn đạt khác nhau của cùng chủ đề — interface `cluster_signals`
 
 from __future__ import annotations
 
+from hashlib import sha1
+
 from trendos.models import Signal, Trend
 from trendos.text import tokenize
 
@@ -57,13 +59,21 @@ def cluster_signals(signals: list[Signal]) -> list[Trend]:
 
 def _to_trend(cluster: dict) -> Trend:
     sigs: list[Signal] = cluster["signals"]
+    tokens = sorted(cluster["tokens"])
     # Nhãn: tiêu đề dài nhất (thường mô tả đầy đủ nhất).
     label = max((s.title for s in sigs), key=len, default="")
     # first_seen: thời điểm sớm nhất quan sát được trong cụm.
     first_seen = min(s.captured_at for s in sigs)
     return Trend(
+        trend_key=_trend_key(tokens),
         label=label,
-        keywords=sorted(cluster["tokens"]),
+        keywords=tokens,
         signals=sigs,
         first_seen=first_seen,
     )
+
+
+def _trend_key(tokens: list[str]) -> str:
+    """Tạo khoá ổn định từ token cụm để merge trend qua nhiều lần chạy."""
+    material = " ".join(tokens[:16])
+    return sha1(material.encode("utf-8")).hexdigest()
