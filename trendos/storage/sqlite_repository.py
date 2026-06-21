@@ -19,9 +19,9 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -31,6 +31,7 @@ from trendos.models import (
     ContentPlan,
     MediaAsset,
     PerformanceReport,
+    PipelineRun,
     Publication,
     ResearchBrief,
     Signal,
@@ -39,8 +40,15 @@ from trendos.models import (
 from trendos.storage.repository import Repository
 
 _T = TypeVar("_T")
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+_SCHEMA_VERSION = 2
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS signals (
     dedup_key   TEXT NOT NULL,
     captured_at TEXT NOT NULL,
@@ -50,10 +58,12 @@ CREATE TABLE IF NOT EXISTS signals (
 CREATE INDEX IF NOT EXISTS idx_signals_key ON signals(dedup_key);
 
 CREATE TABLE IF NOT EXISTS trends (
-    id    TEXT PRIMARY KEY,
-    score REAL NOT NULL DEFAULT 0,
-    data  TEXT NOT NULL
+    id        TEXT PRIMARY KEY,
+    trend_key TEXT,
+    score     REAL NOT NULL DEFAULT 0,
+    data      TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_trends_key ON trends(trend_key);
 
 CREATE TABLE IF NOT EXISTS content (
     id       TEXT PRIMARY KEY,
@@ -61,6 +71,14 @@ CREATE TABLE IF NOT EXISTS content (
     format   TEXT,
     data     TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS runs (
+    id         TEXT PRIMARY KEY,
+    status     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    data       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_runs_created ON runs(created_at);
 
 CREATE TABLE IF NOT EXISTS agent_artifacts (
     artifact_type TEXT NOT NULL,
@@ -84,7 +102,21 @@ class SqliteRepository(Repository):
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self) -> None:
+        trend_cols = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(trends)").fetchall()
+        }
+        if "trend_key" not in trend_cols:
+            self._conn.execute("ALTER TABLE trends ADD COLUMN trend_key TEXT")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trends_key ON trends(trend_key)")
+        self._conn.execute(
+            "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
+            (str(_SCHEMA_VERSION),),
+        )
 
     def close(self) -> None:
         with self._lock:
@@ -137,16 +169,17 @@ class SqliteRepository(Repository):
     async def save_trends(self, trends: list[Trend]) -> None:
         def _op() -> None:
             self._write(
-                "INSERT OR REPLACE INTO trends (id, score, data) VALUES (?, ?, ?)",
-                ((t.id, t.score, t.model_dump_json()) for t in trends),
+                "INSERT OR REPLACE INTO trends (id, trend_key, score, data) VALUES (?, ?, ?, ?)",
+                ((t.id, t.trend_key, t.score, t.model_dump_json()) for t in trends),
             )
 
         await self._run(_op)
 
-    async def list_trends(self, *, limit: int = 50) -> list[Trend]:
+    async def list_trends(self, *, limit: int = 50, offset: int = 0) -> list[Trend]:
         def _op() -> list[Trend]:
             rows = self._conn.execute(
-                "SELECT data FROM trends ORDER BY score DESC LIMIT ?", (limit,)
+                "SELECT data FROM trends ORDER BY score DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ).fetchall()
             return [Trend.model_validate_json(r["data"]) for r in rows]
 
@@ -156,6 +189,16 @@ class SqliteRepository(Repository):
         def _op() -> Trend | None:
             row = self._conn.execute(
                 "SELECT data FROM trends WHERE id = ?", (trend_id,)
+            ).fetchone()
+            return Trend.model_validate_json(row["data"]) if row else None
+
+        return await self._run(_op)
+
+    async def get_trend_by_key(self, trend_key: str) -> Trend | None:
+        def _op() -> Trend | None:
+            row = self._conn.execute(
+                "SELECT data FROM trends WHERE trend_key = ? ORDER BY score DESC LIMIT 1",
+                (trend_key,),
             ).fetchone()
             return Trend.model_validate_json(row["data"]) if row else None
 
@@ -175,7 +218,12 @@ class SqliteRepository(Repository):
         await self._run(_op)
 
     async def list_content(
-        self, *, trend_id: str | None = None, fmt: ContentFormat | None = None
+        self,
+        *,
+        trend_id: str | None = None,
+        fmt: ContentFormat | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[ContentPiece]:
         def _op() -> list[ContentPiece]:
             query = "SELECT data FROM content"
@@ -189,14 +237,51 @@ class SqliteRepository(Repository):
                 params.append(fmt.value)
             if clauses:
                 query += " WHERE " + " AND ".join(clauses)
+            query += " LIMIT ? OFFSET ?"
+            params.extend([str(limit), str(offset)])
             rows = self._conn.execute(query, params).fetchall()
             return [ContentPiece.model_validate_json(r["data"]) for r in rows]
 
         return await self._run(_op)
 
+    async def save_run(self, run: PipelineRun) -> None:
+        def _op() -> None:
+            self._write(
+                "INSERT OR REPLACE INTO runs (id, status, created_at, data) VALUES (?, ?, ?, ?)",
+                [(run.id, run.status.value, run.created_at.isoformat(), run.model_dump_json())],
+            )
+
+        await self._run(_op)
+
+    async def get_run(self, run_id: str) -> PipelineRun | None:
+        def _op() -> PipelineRun | None:
+            row = self._conn.execute("SELECT data FROM runs WHERE id = ?", (run_id,)).fetchone()
+            return PipelineRun.model_validate_json(row["data"]) if row else None
+
+        return await self._run(_op)
+
+    async def list_runs(self, *, limit: int = 50, offset: int = 0) -> list[PipelineRun]:
+        def _op() -> list[PipelineRun]:
+            rows = self._conn.execute(
+                "SELECT data FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+            return [PipelineRun.model_validate_json(r["data"]) for r in rows]
+
+        return await self._run(_op)
+
+    async def schema_version(self) -> int:
+        def _op() -> int:
+            row = self._conn.execute(
+                "SELECT value FROM schema_meta WHERE key = 'version'"
+            ).fetchone()
+            return int(row["value"]) if row else 0
+
+        return await self._run(_op)
+
     # ─── Artifact của dây chuyền 9 agent ──────────────────────────────────
     async def _save_artifacts(
-        self, artifact_type: str, items: list[BaseModel], key: Callable[[BaseModel], str]
+        self, artifact_type: str, items: Sequence[BaseModel], key: Callable[[Any], str]
     ) -> None:
         def _op() -> None:
             self._write(
@@ -210,14 +295,48 @@ class SqliteRepository(Repository):
     async def save_briefs(self, briefs: list[ResearchBrief]) -> None:
         await self._save_artifacts("brief", briefs, lambda b: b.trend_id)
 
+    async def list_briefs(self) -> list[ResearchBrief]:
+        return await self._list_artifacts("brief", ResearchBrief)
+
     async def save_plans(self, plans: list[ContentPlan]) -> None:
         await self._save_artifacts("plan", plans, lambda p: p.trend_id)
+
+    async def list_plans(self) -> list[ContentPlan]:
+        return await self._list_artifacts("plan", ContentPlan)
 
     async def save_assets(self, assets: list[MediaAsset]) -> None:
         await self._save_artifacts("asset", assets, lambda a: a.id)
 
+    async def list_assets(self, *, content_id: str | None = None) -> list[MediaAsset]:
+        assets = await self._list_artifacts("asset", MediaAsset)
+        if content_id is not None:
+            assets = [a for a in assets if a.content_id == content_id]
+        return assets
+
     async def save_publications(self, publications: list[Publication]) -> None:
         await self._save_artifacts("publication", publications, lambda p: p.id)
 
+    async def list_publications(self, *, content_id: str | None = None) -> list[Publication]:
+        publications = await self._list_artifacts("publication", Publication)
+        if content_id is not None:
+            publications = [p for p in publications if p.content_id == content_id]
+        return publications
+
     async def save_reports(self, reports: list[PerformanceReport]) -> None:
         await self._save_artifacts("report", reports, lambda r: r.id)
+
+    async def list_reports(self, *, publication_id: str | None = None) -> list[PerformanceReport]:
+        reports = await self._list_artifacts("report", PerformanceReport)
+        if publication_id is not None:
+            reports = [r for r in reports if r.publication_id == publication_id]
+        return reports
+
+    async def _list_artifacts(self, artifact_type: str, model: type[_ModelT]) -> list[_ModelT]:
+        def _op() -> list[_ModelT]:
+            rows = self._conn.execute(
+                "SELECT data FROM agent_artifacts WHERE artifact_type = ?",
+                (artifact_type,),
+            ).fetchall()
+            return [model.model_validate_json(r["data"]) for r in rows]
+
+        return await self._run(_op)

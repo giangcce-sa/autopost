@@ -23,15 +23,15 @@ from trendos.config import ScoringWeights
 from trendos.models import Signal, SourceName, Trend
 
 # Metric đại diện "độ lớn" theo từng nguồn (để tính đạo hàm theo thời gian).
-# Nguồn không có metric tích luỹ (vd. RSS) → rơi về max của metrics, hoặc 0.
-_PRIMARY_METRIC: dict[SourceName, str] = {
-    SourceName.HACKER_NEWS: "score",
-    SourceName.REDDIT: "ups",
-    SourceName.YOUTUBE: "views",
-    SourceName.GITHUB: "stars",
-    SourceName.GOOGLE_TRENDS: "search_index",
-    SourceName.TWITTER: "likes",
-    SourceName.TIKTOK: "play_count",
+# Dùng alias để scorer không lệch nếu collector/API đặt tên metric khác nhau.
+_PRIMARY_METRICS: dict[SourceName, tuple[str, ...]] = {
+    SourceName.HACKER_NEWS: ("score",),
+    SourceName.REDDIT: ("upvotes", "ups", "score", "comments"),
+    SourceName.YOUTUBE: ("views", "view_count", "viewCount"),
+    SourceName.GITHUB: ("stars", "stargazers_count"),
+    SourceName.GOOGLE_TRENDS: ("search_index",),
+    SourceName.TWITTER: ("likes", "like_count"),
+    SourceName.TIKTOK: ("play_count", "views"),
 }
 
 
@@ -65,9 +65,9 @@ class TrendScorer:
     # ─── Tiện ích chuỗi thời gian ────────────────────────────────────────
 
     def _primary_metric(self, sig: Signal) -> float:
-        key = _PRIMARY_METRIC.get(sig.source)
-        if key is not None and key in sig.metrics:
-            return float(sig.metrics[key])
+        for key in _PRIMARY_METRICS.get(sig.source, ()):
+            if key in sig.metrics:
+                return float(sig.metrics[key])
         return max(sig.metrics.values()) if sig.metrics else 0.0
 
     def _series(

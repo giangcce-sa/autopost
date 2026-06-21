@@ -9,6 +9,7 @@ from trendos.agents.copywriter import CopywriterAgent
 from trendos.agents.research import ResearchAgent
 from trendos.agents.strategist import ContentStrategistAgent
 from trendos.config import get_settings
+from trendos.generation.claude_client import ClaudeClient
 from trendos.models import ContentFormat, ContentPlan, ContentPlanItem, Trend
 from trendos.storage import InMemoryRepository
 from trendos.text import extract_hashtags
@@ -84,3 +85,8 @@ async def test_copywriter_generates_content_and_extracts_hashtags():
 
 def test_extract_hashtags_dedups():
     assert extract_hashtags("a #x b #y #x") == ["#x", "#y"]
+
+
+def test_claude_json_parser_accepts_markdown_wrapped_object():
+    text = "```json\n{\"summary\": \"ok\", \"facts\": []}\n```"
+    assert ClaudeClient._json_from_text(text)["summary"] == "ok"

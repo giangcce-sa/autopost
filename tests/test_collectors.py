@@ -5,9 +5,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from trendos.collectors.github import repo_to_signal
+from trendos.collectors.google_trends import trend_to_signal
 from trendos.collectors.hackernews import story_to_signal
 from trendos.collectors.reddit import post_to_signal
 from trendos.collectors.rss import entry_to_signal
+from trendos.collectors.tiktok import tiktok_to_signal
+from trendos.collectors.twitter import tweet_to_signal
+from trendos.collectors.youtube import video_to_signal
 from trendos.models import SourceName
 from trendos.text import extract_keywords, tokenize
 
@@ -120,3 +124,73 @@ def test_reddit_post_to_signal_maps_fields():
 
 def test_reddit_post_to_signal_skips_without_id():
     assert post_to_signal(SimpleNamespace(title="x", id=None)) is None
+
+
+# ─── Google Trends / YouTube / Twitter mappers ───────────────────────────
+
+
+def test_google_trend_to_signal_maps_keyword():
+    sig = trend_to_signal("Claude Opus 4.8", search_index=87)
+    assert sig is not None
+    assert sig.source == SourceName.GOOGLE_TRENDS
+    assert sig.metrics["search_index"] == 87
+    assert "claude" in sig.keywords
+
+
+def test_youtube_video_to_signal_maps_fields():
+    sig = video_to_signal(
+        {
+            "id": "vid1",
+            "snippet": {
+                "title": "New AI demo",
+                "description": "A demo video",
+                "tags": ["AI", "demo"],
+            },
+            "statistics": {"viewCount": "1000", "likeCount": "50", "commentCount": "7"},
+        }
+    )
+    assert sig is not None
+    assert sig.source == SourceName.YOUTUBE
+    assert sig.metrics["views"] == 1000
+    assert sig.url == "https://www.youtube.com/watch?v=vid1"
+
+
+def test_tweet_to_signal_maps_public_metrics():
+    sig = tweet_to_signal(
+        {
+            "id": "tw1",
+            "text": "AI agents are trending",
+            "public_metrics": {
+                "like_count": 12,
+                "retweet_count": 3,
+                "reply_count": 2,
+                "quote_count": 1,
+            },
+        }
+    )
+    assert sig is not None
+    assert sig.source == SourceName.TWITTER
+    assert sig.metrics["likes"] == 12
+    assert sig.url == "https://twitter.com/i/web/status/tw1"
+
+
+def test_tiktok_to_signal_maps_provider_payload():
+    sig = tiktok_to_signal(
+        {
+            "id": "tt1",
+            "desc": "AI workflow trend",
+            "share_url": "https://www.tiktok.com/@u/video/tt1",
+            "hashtags": [{"name": "ai"}, "workflow"],
+            "stats": {
+                "play_count": 10000,
+                "digg_count": 800,
+                "share_count": 120,
+                "comment_count": 55,
+            },
+        }
+    )
+    assert sig is not None
+    assert sig.source == SourceName.TIKTOK
+    assert sig.metrics["views"] == 10000
+    assert sig.metrics["likes"] == 800
+    assert "workflow" in sig.keywords

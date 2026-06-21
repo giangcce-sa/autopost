@@ -54,9 +54,12 @@ class Settings(BaseSettings):
     # ─── Detection ───────────────────────────────────────────────────────
     top_n_trends: int = 10        # số xu hướng đưa sang giai đoạn sinh nội dung
     min_trend_score: float = 0.3  # ngưỡng lọc điểm tối thiểu
+    scheduler_interval_seconds: int = Field(3600, validation_alias="SCHEDULER_INTERVAL_SECONDS")
 
     # ─── Storage ─────────────────────────────────────────────────────────
     database_url: str = "sqlite:///trendos.db"
+    output_dir: str = Field("trendos_output", validation_alias="OUTPUT_DIR")
+    api_key: str = Field("", validation_alias="API_KEY")
 
     # ─── Khoá API nguồn dữ liệu (rỗng = collector đó chạy ở chế độ stub) ──
     reddit_client_id: str = Field("", validation_alias="REDDIT_CLIENT_ID")
@@ -67,13 +70,22 @@ class Settings(BaseSettings):
     )
     twitter_bearer_token: str = Field("", validation_alias="TWITTER_BEARER_TOKEN")
     youtube_api_key: str = Field("", validation_alias="YOUTUBE_API_KEY")
+    youtube_region_code: str = Field("US", validation_alias="YOUTUBE_REGION_CODE")
     github_token: str = Field("", validation_alias="GITHUB_TOKEN")
+    google_trends_geo: str = Field("united_states", validation_alias="GOOGLE_TRENDS_GEO")
+    twitter_query: str = Field(
+        "(AI OR startup OR technology OR programming) lang:en -is:retweet",
+        validation_alias="TWITTER_QUERY",
+    )
 
     # ─── Khoá provider cho agent media & đăng bài (rỗng = agent đó bị bỏ qua) ─
     image_provider_key: str = Field("", validation_alias="IMAGE_PROVIDER_KEY")
     video_provider_key: str = Field("", validation_alias="VIDEO_PROVIDER_KEY")
+    publish_provider_key: str = Field("", validation_alias="PUBLISH_PROVIDER_KEY")
     facebook_token: str = Field("", validation_alias="FACEBOOK_TOKEN")
     tiktok_token: str = Field("", validation_alias="TIKTOK_TOKEN")
+    tiktok_provider_key: str = Field("", validation_alias="TIKTOK_PROVIDER_KEY")
+    analytics_provider_key: str = Field("", validation_alias="ANALYTICS_PROVIDER_KEY")
 
     # ─── RSS feeds mặc định (collector RSS) ──────────────────────────────
     rss_feeds: list[str] = Field(
@@ -89,4 +101,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Singleton cấu hình (cache để không đọc lại .env mỗi lần gọi)."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]

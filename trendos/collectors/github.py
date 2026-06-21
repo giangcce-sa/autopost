@@ -55,7 +55,7 @@ class GitHubCollector(BaseCollector):
 
     async def collect(self) -> list[Signal]:
         since = (datetime.now(UTC) - timedelta(days=_WINDOW_DAYS)).date().isoformat()
-        params = {
+        params: dict[str, str | int] = {
             "q": f"created:>{since} stars:>{_MIN_STARS}",
             "sort": "stars",
             "order": "desc",

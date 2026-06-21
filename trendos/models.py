@@ -56,6 +56,15 @@ class PublishStatus(StrEnum):
     FAILED = "failed"
 
 
+class PipelineRunStatus(StrEnum):
+    """Trạng thái một lượt chạy pipeline."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class Signal(BaseModel):
     """Một quan sát thô từ một nguồn, đã được chuẩn hoá về dạng chung.
 
@@ -83,6 +92,10 @@ class Trend(BaseModel):
     """Một cụm tín hiệu được nhận diện là cùng một xu hướng, kèm điểm số."""
 
     id: str = Field(default_factory=lambda: uuid4().hex)
+    trend_key: str = Field(
+        default="",
+        description="Khoá ổn định để nhận diện cùng một xu hướng qua nhiều lần chạy",
+    )
     label: str = Field(..., description="Nhãn ngắn gọn cho xu hướng")
     keywords: list[str] = Field(default_factory=list)
     signals: list[Signal] = Field(default_factory=list)
@@ -111,6 +124,21 @@ class ContentPiece(BaseModel):
     title: str
     body: str
     meta: dict[str, str] = Field(default_factory=dict, description="hashtag, CTA, SEO...")
+    created_at: datetime = Field(default_factory=_now)
+
+
+class PipelineRun(BaseModel):
+    """Một lượt chạy pipeline, dùng cho API/CLI theo dõi trạng thái."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    dry_run: bool = False
+    status: PipelineRunStatus = PipelineRunStatus.QUEUED
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    summary: dict[str, int | float | str | list[dict[str, str | float]]] = Field(
+        default_factory=dict
+    )
+    error: str | None = None
     created_at: datetime = Field(default_factory=_now)
 
 
