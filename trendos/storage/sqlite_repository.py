@@ -20,12 +20,14 @@ import asyncio
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
 from trendos.models import (
+    ContentApprovalStatus,
     ContentFormat,
     ContentPiece,
     ContentPlan,
@@ -41,7 +43,7 @@ from trendos.storage.repository import Repository
 
 _T = TypeVar("_T")
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS content (
     id       TEXT PRIMARY KEY,
     trend_id TEXT,
     format   TEXT,
+    approval_status TEXT NOT NULL DEFAULT 'draft',
     data     TEXT NOT NULL
 );
 
@@ -113,6 +116,17 @@ class SqliteRepository(Repository):
         if "trend_key" not in trend_cols:
             self._conn.execute("ALTER TABLE trends ADD COLUMN trend_key TEXT")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trends_key ON trends(trend_key)")
+        content_cols = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(content)").fetchall()
+        }
+        if "approval_status" not in content_cols:
+            self._conn.execute(
+                "ALTER TABLE content ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'draft'"
+            )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_content_approval ON content(approval_status)"
+        )
         self._conn.execute(
             "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
             (str(_SCHEMA_VERSION),),
@@ -208,20 +222,37 @@ class SqliteRepository(Repository):
     async def save_content(self, pieces: list[ContentPiece]) -> None:
         def _op() -> None:
             self._write(
-                "INSERT OR REPLACE INTO content (id, trend_id, format, data) VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO content "
+                "(id, trend_id, format, approval_status, data) VALUES (?, ?, ?, ?, ?)",
                 (
-                    (c.id, c.trend_id, c.format.value, c.model_dump_json())
+                    (
+                        c.id,
+                        c.trend_id,
+                        c.format.value,
+                        c.approval_status.value,
+                        c.model_dump_json(),
+                    )
                     for c in pieces
                 ),
             )
 
         await self._run(_op)
 
+    async def get_content(self, content_id: str) -> ContentPiece | None:
+        def _op() -> ContentPiece | None:
+            row = self._conn.execute(
+                "SELECT data FROM content WHERE id = ?", (content_id,)
+            ).fetchone()
+            return ContentPiece.model_validate_json(row["data"]) if row else None
+
+        return await self._run(_op)
+
     async def list_content(
         self,
         *,
         trend_id: str | None = None,
         fmt: ContentFormat | None = None,
+        approval_status: ContentApprovalStatus | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ContentPiece]:
@@ -235,12 +266,36 @@ class SqliteRepository(Repository):
             if fmt is not None:
                 clauses.append("format = ?")
                 params.append(fmt.value)
+            if approval_status is not None:
+                clauses.append("approval_status = ?")
+                params.append(approval_status.value)
             if clauses:
                 query += " WHERE " + " AND ".join(clauses)
             query += " LIMIT ? OFFSET ?"
             params.extend([str(limit), str(offset)])
             rows = self._conn.execute(query, params).fetchall()
             return [ContentPiece.model_validate_json(r["data"]) for r in rows]
+
+        return await self._run(_op)
+
+    async def update_content_approval(
+        self, content_id: str, status: ContentApprovalStatus
+    ) -> ContentPiece | None:
+        def _op() -> ContentPiece | None:
+            row = self._conn.execute(
+                "SELECT data FROM content WHERE id = ?", (content_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            piece = ContentPiece.model_validate_json(row["data"]).model_copy(
+                update={"approval_status": status, "reviewed_at": datetime.now(UTC)}
+            )
+            self._conn.execute(
+                "UPDATE content SET approval_status = ?, data = ? WHERE id = ?",
+                (status.value, piece.model_dump_json(), content_id),
+            )
+            self._conn.commit()
+            return piece
 
         return await self._run(_op)
 

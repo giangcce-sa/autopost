@@ -13,6 +13,7 @@ from trendos.agents.video_producer import VideoProducerAgent
 from trendos.config import get_settings
 from trendos.models import (
     AssetType,
+    ContentApprovalStatus,
     ContentFormat,
     ContentPiece,
     PerformanceReport,
@@ -78,6 +79,24 @@ async def test_publisher_creates_publication_per_piece():
     assert len(ctx.publications) == 1
     assert ctx.publications[0].platform == "facebook"
     assert ctx.publications[0].external_url == "https://p/1"
+
+
+@pytest.mark.asyncio
+async def test_publisher_requires_approval_for_production_provider_key():
+    ctx = _ctx()
+    ctx.settings = ctx.settings.model_copy(
+        update={"publish_provider_key": "my.providers:Publisher"}
+    )
+    draft = _piece(ContentFormat.SOCIAL_POST, channel="facebook")
+    approved = _piece(ContentFormat.SOCIAL_POST, channel="facebook").model_copy(
+        update={"approval_status": ContentApprovalStatus.APPROVED}
+    )
+    ctx.content = [draft, approved]
+
+    await PublisherAgent(provider=FakePublish()).run(ctx)
+
+    assert len(ctx.publications) == 1
+    assert ctx.publications[0].content_id == approved.id
 
 
 @pytest.mark.asyncio

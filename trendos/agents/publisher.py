@@ -13,7 +13,13 @@ from typing import cast
 from trendos.agents.base import BaseAgent, PipelineContext
 from trendos.agents.local_providers import LocalPublishProvider
 from trendos.agents.providers import ProviderNotConfigured, PublishProvider
-from trendos.models import ContentPiece, MediaAsset, Publication, PublishStatus
+from trendos.models import (
+    ContentApprovalStatus,
+    ContentPiece,
+    MediaAsset,
+    Publication,
+    PublishStatus,
+)
 from trendos.provider_loader import load_provider
 
 log = logging.getLogger("trendos.agent.publisher")
@@ -44,6 +50,7 @@ class PublisherAgent(BaseAgent):
 
     async def run(self, ctx: PipelineContext) -> None:
         provider = self._resolve(ctx)
+        content = _publishable_content(ctx)
         assets_by_content: dict[str, list[MediaAsset]] = {}
         for a in ctx.assets:
             assets_by_content.setdefault(a.content_id, []).append(a)
@@ -59,7 +66,17 @@ class PublisherAgent(BaseAgent):
                 external_url=result.get("external_url"),
             )
 
-        pubs = await asyncio.gather(*(_publish(p) for p in ctx.content))
+        pubs = await asyncio.gather(*(_publish(p) for p in content))
         ctx.publications.extend(pubs)
         await ctx.repo.save_publications(list(pubs))
         log.info("Đăng/đặt lịch %d bài", len(pubs))
+
+
+def _publishable_content(ctx: PipelineContext) -> list[ContentPiece]:
+    if ctx.settings.publish_provider_key and ctx.settings.publish_provider_key != "local":
+        return [
+            piece
+            for piece in ctx.content
+            if piece.approval_status == ContentApprovalStatus.APPROVED
+        ]
+    return list(ctx.content)

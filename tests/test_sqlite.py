@@ -9,6 +9,7 @@ import pytest
 from trendos.config import Settings
 from trendos.models import (
     AssetType,
+    ContentApprovalStatus,
     ContentFormat,
     ContentPiece,
     MediaAsset,
@@ -107,6 +108,22 @@ async def test_save_content_roundtrip_with_filters(repo: SqliteRepository):
     assert len(await repo.list_content(trend_id="t1")) == 1
     by_fmt = await repo.list_content(fmt=ContentFormat.BLOG_ARTICLE)
     assert len(by_fmt) == 1 and by_fmt[0].trend_id == "t2"
+
+
+@pytest.mark.asyncio
+async def test_content_approval_roundtrip_and_filter(repo: SqliteRepository):
+    post = ContentPiece(trend_id="t1", format=ContentFormat.SOCIAL_POST, title="p", body="b")
+    await repo.save_content([post])
+
+    updated = await repo.update_content_approval(post.id, ContentApprovalStatus.APPROVED)
+
+    assert updated is not None
+    assert updated.approval_status == ContentApprovalStatus.APPROVED
+    assert updated.reviewed_at is not None
+    fetched = await repo.get_content(post.id)
+    assert fetched is not None and fetched.approval_status == ContentApprovalStatus.APPROVED
+    approved = await repo.list_content(approval_status=ContentApprovalStatus.APPROVED)
+    assert [p.id for p in approved] == [post.id]
 
 
 @pytest.mark.asyncio

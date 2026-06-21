@@ -101,5 +101,10 @@ ANALYTICS_PROVIDER_KEY=my_project.providers:AnalyticsProvider
 ```
 
 Provider classes/factories may accept no arguments or one `Settings` argument.
+Production publish adapters only receive content that has been approved in the
+dashboard workflow. Use `/dashboard/content` to preview generated content,
+inspect metadata/assets, then approve or reject each piece before enabling a
+real `PUBLISH_PROVIDER_KEY`.
+
 Add real provider adapters only after API credentials, approval workflow, and
 publishing policy are confirmed.
