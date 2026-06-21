@@ -104,11 +104,12 @@ trendos/
 
 - [x] Khung dự án + kiến trúc + interface
 - [x] Khung dây chuyền 9 AI agent (interface `BaseAgent` + blackboard + orchestrator)
-- [x] Collector Hacker News + RSS (logic thật)
+- [x] Collector Hacker News + RSS + GitHub + Reddit (logic thật)
 - [x] Engine chấm điểm momentum (velocity/gia tốc/độ mới/bão hoà) + clustering
 - [x] Logic 9 agent: Research/Strategist/Copywriter (Claude), Image/Video/Publisher/Analyst (qua interface provider), Learning (heuristic)
+- [x] Lưu trữ bền bằng SQLite (`SqliteRepository`) — lưu lịch sử metric cho velocity/acceleration
 - [ ] Adapter provider thật (ảnh/video/đăng bài/analytics) + web search cho Research
-- [ ] Lưu trữ bền (SQLite → Postgres)
+- [ ] Collector còn lại (Google Trends/X/YouTube/TikTok) + đổi sang Postgres khi cần
 - [ ] Lập lịch chạy định kỳ + áp dụng `LearningUpdate` tự động
 - [ ] Dashboard web
 
