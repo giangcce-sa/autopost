@@ -65,6 +65,14 @@ class PipelineRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class ContentApprovalStatus(StrEnum):
+    """Trạng thái duyệt nội dung trước khi publish thật."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Signal(BaseModel):
     """Một quan sát thô từ một nguồn, đã được chuẩn hoá về dạng chung.
 
@@ -124,6 +132,8 @@ class ContentPiece(BaseModel):
     title: str
     body: str
     meta: dict[str, str] = Field(default_factory=dict, description="hashtag, CTA, SEO...")
+    approval_status: ContentApprovalStatus = ContentApprovalStatus.DRAFT
+    reviewed_at: datetime | None = None
     created_at: datetime = Field(default_factory=_now)
 
 

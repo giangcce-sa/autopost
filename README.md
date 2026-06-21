@@ -88,6 +88,18 @@ PUBLISH_PROVIDER_KEY=my_project.providers:MetaPublishProvider
 
 Provider class/factory nhận không tham số hoặc nhận một tham số `Settings`.
 
+### Duyệt nội dung trước khi publish
+
+Dashboard có workflow duyệt nội dung tại `/dashboard/content`:
+
+- `Preview`: xem đầy đủ body, metadata, assets và publication receipts.
+- `Approve`: đánh dấu nội dung sẵn sàng publish thật.
+- `Reject`: loại khỏi luồng publish thật.
+
+Khi dùng production `PUBLISH_PROVIDER_KEY` qua import path, Publisher chỉ đăng
+các `ContentPiece` có `approval_status=approved`. `local` provider vẫn cho phép
+chạy end-to-end an toàn trong môi trường dev.
+
 ```bash
 python -m trendos.cli run --full
 ```
@@ -152,7 +164,7 @@ trendos/
 - [x] Google Trends/X/YouTube collector ở mức production-safe; TikTok chờ provider ổn định
 - [x] Lập lịch chạy định kỳ đơn giản + run tracking
 - [x] Cơ chế cắm adapter production qua import path cấu hình
-- [x] Dashboard quản trị cơ bản: runs, trends, content, trend detail, nút chạy pipeline
+- [x] Dashboard quản trị: runs, trends, content preview, approve/reject, trend detail, nút chạy pipeline
 - [x] API auth, pagination, health details, schema versioning, Docker, CI, runbook
 
 Các tích hợp đăng thật Meta/TikTok/YouTube, image/video SaaS và analytics thật

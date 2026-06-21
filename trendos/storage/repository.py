@@ -10,8 +10,10 @@ tính velocity/acceleration (xem ARCHITECTURE.md §4.2, §6).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
 
 from trendos.models import (
+    ContentApprovalStatus,
     ContentFormat,
     ContentPiece,
     ContentPlan,
@@ -50,14 +52,23 @@ class Repository(ABC):
     async def save_content(self, pieces: list[ContentPiece]) -> None: ...
 
     @abstractmethod
+    async def get_content(self, content_id: str) -> ContentPiece | None: ...
+
+    @abstractmethod
     async def list_content(
         self,
         *,
         trend_id: str | None = None,
         fmt: ContentFormat | None = None,
+        approval_status: ContentApprovalStatus | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ContentPiece]: ...
+
+    @abstractmethod
+    async def update_content_approval(
+        self, content_id: str, status: ContentApprovalStatus
+    ) -> ContentPiece | None: ...
 
     @abstractmethod
     async def save_run(self, run: PipelineRun) -> None: ...
@@ -149,11 +160,15 @@ class InMemoryRepository(Repository):
     async def save_content(self, pieces: list[ContentPiece]) -> None:
         self._content.extend(pieces)
 
+    async def get_content(self, content_id: str) -> ContentPiece | None:
+        return next((c for c in self._content if c.id == content_id), None)
+
     async def list_content(
         self,
         *,
         trend_id: str | None = None,
         fmt: ContentFormat | None = None,
+        approval_status: ContentApprovalStatus | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ContentPiece]:
@@ -162,7 +177,24 @@ class InMemoryRepository(Repository):
             out = [c for c in out if c.trend_id == trend_id]
         if fmt is not None:
             out = [c for c in out if c.format == fmt]
+        if approval_status is not None:
+            out = [c for c in out if c.approval_status == approval_status]
         return list(out)[offset : offset + limit]
+
+    async def update_content_approval(
+        self, content_id: str, status: ContentApprovalStatus
+    ) -> ContentPiece | None:
+        piece = await self.get_content(content_id)
+        if piece is None:
+            return None
+        updated = piece.model_copy(
+            update={"approval_status": status, "reviewed_at": datetime.now(UTC)}
+        )
+        for idx, existing in enumerate(self._content):
+            if existing.id == content_id:
+                self._content[idx] = updated
+                break
+        return updated
 
     async def save_run(self, run: PipelineRun) -> None:
         self._runs[run.id] = run

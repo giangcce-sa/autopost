@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from trendos.api.deps import get_orchestrator, require_api_key
+from trendos.models import ContentApprovalStatus, ContentPiece
 from trendos.pipeline import Orchestrator
 
 router = APIRouter(tags=["dashboard"], dependencies=[Depends(require_api_key)])
@@ -38,6 +39,20 @@ def _page(title: str, body: str) -> HTMLResponse:
             ".status { display: inline-block; border-radius: 999px;",
             "  padding: 4px 10px; background: #e0f2fe; font-weight: 800;",
             "  font-size: 12px; }",
+            ".status.approved { background: #dcfce7; color: #166534; }",
+            ".status.rejected { background: #fee2e2; color: #991b1b; }",
+            ".status.draft { background: #fef3c7; color: #92400e; }",
+            ".actions { display: flex; gap: 8px; flex-wrap: wrap; }",
+            "button, .button { border: 0; border-radius: 10px; padding: 9px 12px;",
+            "  font-weight: 800; background: #111827; color: white;",
+            "  text-decoration: none; cursor: pointer; }",
+            ".button.secondary, button.secondary { background: #e2e8f0; color: #0f172a; }",
+            ".button.good, button.good { background: #16a34a; }",
+            ".button.bad, button.bad { background: #dc2626; }",
+            ".filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }",
+            ".preview { white-space: pre-wrap; line-height: 1.65; }",
+            ".meta { display: grid; grid-template-columns: repeat(auto-fit,",
+            "  minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }",
         ]
     )
     html = f"""<!doctype html>
@@ -144,18 +159,88 @@ async def dashboard_trend_detail(
 
 
 @router.get("/dashboard/content", response_class=HTMLResponse)
-async def dashboard_content(orch: Orchestrator = Depends(get_orchestrator)):
-    content = await orch.repo.list_content()
-    rows = "".join(
-        f"<tr><td>{escape(c.title)}</td><td>{escape(c.format.value)}</td>"
-        f"<td>{escape(c.trend_id[:10])}</td><td>{escape(c.body[:180])}</td></tr>"
-        for c in content
-    )
+async def dashboard_content(
+    status: ContentApprovalStatus | None = None,
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    content = await orch.repo.list_content(approval_status=status)
+    filters = _content_filters(status)
+    rows = "".join(_content_row(c) for c in content)
     table = (
-        "<table><tr><th>Title</th><th>Format</th><th>Trend</th>"
-        f"<th>Preview</th></tr>{rows}</table>"
+        "<table><tr><th>Title</th><th>Format</th><th>Status</th><th>Trend</th>"
+        f"<th>Preview</th><th>Actions</th></tr>{rows}</table>"
     )
-    return _page("Content", f"<h1>Content</h1>{table}")
+    return _page("Content", f"<h1>Content</h1>{filters}{table}")
+
+
+@router.get("/dashboard/content/{content_id}", response_class=HTMLResponse)
+async def dashboard_content_detail(
+    content_id: str,
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    piece = await orch.repo.get_content(content_id)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+    trend = await orch.repo.get_trend(piece.trend_id)
+    assets = await orch.repo.list_assets(content_id=piece.id)
+    publications = await orch.repo.list_publications(content_id=piece.id)
+
+    asset_rows = "".join(
+        f"<tr><td>{escape(a.type.value)}</td><td>{escape(a.uri)}</td></tr>"
+        for a in assets
+    )
+    publication_rows = "".join(
+        f"<tr><td>{escape(p.platform)}</td><td>{escape(p.status.value)}</td>"
+        f"<td>{escape(str(p.external_url or ''))}</td></tr>"
+        for p in publications
+    )
+    format_value = escape(piece.format.value)
+    trend_label = escape(trend.label if trend else piece.trend_id)
+    channel = escape(piece.meta.get("channel", "-"))
+    body = f"""
+    <div class="actions">
+      <a class="button secondary" href="/dashboard/content">Back</a>
+      {_approval_forms(piece)}
+    </div>
+    <h1>{escape(piece.title)}</h1>
+    <div class="meta">
+      <div class="card"><div class="muted">Status</div>{_status_badge(piece.approval_status)}</div>
+      <div class="card"><div class="muted">Format</div><strong>{format_value}</strong></div>
+      <div class="card"><div class="muted">Trend</div><strong>{trend_label}</strong></div>
+      <div class="card"><div class="muted">Channel</div><strong>{channel}</strong></div>
+    </div>
+    <h2>Preview</h2>
+    <div class="card preview">{escape(piece.body)}</div>
+    <h2>Metadata</h2>
+    <div class="card"><pre>{escape(str(piece.meta))}</pre></div>
+    <h2>Assets</h2>
+    <table><tr><th>Type</th><th>URI</th></tr>{asset_rows}</table>
+    <h2>Publications</h2>
+    <table><tr><th>Platform</th><th>Status</th><th>URL</th></tr>{publication_rows}</table>
+    """
+    return _page("Content Preview", body)
+
+
+@router.post("/dashboard/content/{content_id}/approve")
+async def dashboard_approve_content(
+    content_id: str,
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    piece = await orch.repo.update_content_approval(content_id, ContentApprovalStatus.APPROVED)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return RedirectResponse(f"/dashboard/content/{content_id}", status_code=303)
+
+
+@router.post("/dashboard/content/{content_id}/reject")
+async def dashboard_reject_content(
+    content_id: str,
+    orch: Orchestrator = Depends(get_orchestrator),
+):
+    piece = await orch.repo.update_content_approval(content_id, ContentApprovalStatus.REJECTED)
+    if piece is None:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return RedirectResponse(f"/dashboard/content/{content_id}", status_code=303)
 
 
 async def _overview_data(orch: Orchestrator):
@@ -177,3 +262,45 @@ def _trend_table(trends) -> str:
         "<table><tr><th>Trend</th><th>Score</th><th>Detail</th><th>Sources</th></tr>"
         f"{rows}</table>"
     )
+
+
+def _content_filters(active: ContentApprovalStatus | None) -> str:
+    all_cls = "button" if active is None else "button secondary"
+    links = [f'<a class="{all_cls}" href="/dashboard/content">All</a>']
+    for status in ContentApprovalStatus:
+        cls = "button" if active == status else "button secondary"
+        links.append(
+            f'<a class="{cls}" href="/dashboard/content?status={escape(status.value)}">'
+            f"{escape(status.value.title())}</a>"
+        )
+    return f"<div class='filters'>{''.join(links)}</div>"
+
+
+def _content_row(piece: ContentPiece) -> str:
+    preview = piece.body[:180] + ("..." if len(piece.body) > 180 else "")
+    return (
+        f"<tr><td>{escape(piece.title)}</td><td>{escape(piece.format.value)}</td>"
+        f"<td>{_status_badge(piece.approval_status)}</td>"
+        f"<td>{escape(piece.trend_id[:10])}</td><td>{escape(preview)}</td>"
+        "<td><div class='actions'>"
+        f"<a class='button secondary' href='/dashboard/content/{escape(piece.id)}'>Preview</a>"
+        f"{_approval_forms(piece)}"
+        "</div></td></tr>"
+    )
+
+
+def _status_badge(status: ContentApprovalStatus) -> str:
+    value = escape(status.value)
+    return f"<span class='status {value}'>{value}</span>"
+
+
+def _approval_forms(piece: ContentPiece) -> str:
+    approve = (
+        f"<form action='/dashboard/content/{escape(piece.id)}/approve' method='post'>"
+        "<button class='good' type='submit'>Approve</button></form>"
+    )
+    reject = (
+        f"<form action='/dashboard/content/{escape(piece.id)}/reject' method='post'>"
+        "<button class='bad' type='submit'>Reject</button></form>"
+    )
+    return approve + reject
