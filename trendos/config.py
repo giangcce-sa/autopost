@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     reddit_client_id: str = Field("", validation_alias="REDDIT_CLIENT_ID")
     reddit_client_secret: str = Field("", validation_alias="REDDIT_CLIENT_SECRET")
     reddit_user_agent: str = Field("trendos/0.1", validation_alias="REDDIT_USER_AGENT")
+    reddit_subreddits: list[str] = Field(
+        default_factory=lambda: ["technology", "programming", "MachineLearning", "artificial"]
+    )
     twitter_bearer_token: str = Field("", validation_alias="TWITTER_BEARER_TOKEN")
     youtube_api_key: str = Field("", validation_alias="YOUTUBE_API_KEY")
     github_token: str = Field("", validation_alias="GITHUB_TOKEN")

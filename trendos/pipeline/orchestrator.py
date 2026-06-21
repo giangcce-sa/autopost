@@ -14,7 +14,7 @@ import logging
 
 from trendos.agents import AGENT_PIPELINE, DRY_RUN_AGENTS, BaseAgent, PipelineContext
 from trendos.config import Settings, get_settings
-from trendos.storage import InMemoryRepository, Repository
+from trendos.storage import Repository, get_repository
 
 log = logging.getLogger("trendos.pipeline")
 
@@ -22,7 +22,7 @@ log = logging.getLogger("trendos.pipeline")
 class Orchestrator:
     def __init__(self, settings: Settings | None = None, repo: Repository | None = None) -> None:
         self.settings = settings or get_settings()
-        self.repo = repo or InMemoryRepository()
+        self.repo = repo or get_repository(self.settings)
 
     async def run(self, *, dry_run: bool = False) -> dict:
         """Chạy một lượt dây chuyền agent.
