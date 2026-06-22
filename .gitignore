@@ -1,13 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Môi trường & bí mật
+.env
+*.local
+
+# Cơ sở dữ liệu
+*.db
+*.sqlite
+*.sqlite3
+
+# Công cụ
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
 node_modules/
 .next/
 out/
-build/
-.env
-.env.local
-*.log
-.DS_Store
-prisma/*.db
-prisma/migrations/dev/
 next-env.d.ts
-.tsbuildinfo
-*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

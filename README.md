@@ -1,69 +1,176 @@
-# autopost — AI Marketing Operating System (AI-MOS) cho Spa
+# TrendOS
 
-Nền tảng **SaaS đa spa**: một "agency marketing AI" tự vận hành 24/7 chạy trọn phễu
-từ nghiên cứu thị trường → ý tưởng → nội dung → đăng bài → ads → tối ưu → trả lời
-khách → gom lead. Ranh giới hệ thống dừng ở **lead**; đặt lịch/doanh thu thật nằm ở
-phần mềm quản lý spa riêng của khách hàng.
+**Hệ điều hành phát hiện xu hướng và sản xuất nội dung tự động.**
 
-> Tài liệu thiết kế đầy đủ: [docs/AI-MOS-DESIGN.md](docs/AI-MOS-DESIGN.md)
+> Phát hiện thứ đang được quan tâm trên Internet **trước đám đông** và tự động biến nó thành nội dung có khả năng lan truyền.
 
-## Tech stack
+---
 
-Next.js 15 (App Router) + TypeScript · Prisma + PostgreSQL · Anthropic SDK (Claude) ·
-cron scheduler (Vercel Cron) · connector kênh/ads (mock + interface cho live) ·
-notifier Zalo/Telegram.
-
-## Cấu trúc
+## TrendOS làm gì
 
 ```
-prisma/schema.prisma        Mô hình dữ liệu multi-tenant (10 agent, compliance, ads)
-prisma/seed.ts              Tạo spa demo + dịch vụ + kênh + campaign mẫu
-src/lib/anthropic.ts        Client Claude + phân tầng model + trần chi phí AI
-src/lib/agents/             10 agent: ceo, intel, strategy, content, ads, optimizer, reply, analytics
-src/lib/compliance/         Guardrail pháp lý quảng cáo làm đẹp VN
-src/lib/connectors/         Kênh (FB/IG/TikTok/Zalo) + Ads (Meta/TikTok) — mock + interface
-src/lib/notify/             Notifier Zalo/Telegram (mock console / Telegram thật)
-src/lib/orchestrator/       standup (giao ban 8h), optimize (3h), publisher
-src/app/                    Dashboard (Tổng quan/Nội dung/Lead/Ads/Mục tiêu) + API routes
-vercel.json                 Lịch cron 24/7
+   Nguồn dữ liệu          Phát hiện              Sản xuất
+   ─────────────          ──────────             ─────────
+   Google Trends  ─┐
+   X / Reddit      ├─►  Tín hiệu (Signal)  ─►  Chấm điểm   ─►  Cụm xu hướng  ─►  Sinh nội dung đa định dạng
+   YouTube/TikTok  │    chuẩn hoá              (momentum,      (Trend)           - Post MXH
+   RSS / HN        │                            độ mới,                          - Bài blog/SEO
+   GitHub         ─┘                            đa nguồn)                         - Kịch bản video
 ```
 
-## Chạy local
+TrendOS chạy theo một **pipeline** ba giai đoạn:
+
+1. **Collect** — Nhiều *collector* thu thập tín hiệu thô từ các nền tảng, chuẩn hoá về một dạng chung (`Signal`).
+2. **Detect** — Engine gom cụm tín hiệu thành xu hướng (`Trend`) và **chấm điểm theo đà tăng (velocity/acceleration)**, không chỉ theo độ phổ biến — đó là cách phát hiện *trước* đám đông.
+3. **Generate** — Với mỗi xu hướng điểm cao, sinh nội dung đa định dạng bằng Claude API.
+
+### Dây chuyền 9 AI Agent
+
+Trên ba giai đoạn đó, hệ thống được tổ chức thành **9 AI agent chuyên biệt** (tầng `agents/`):
+
+```
+① Trend Hunter → ② Research → ③ Content Strategist →┬→ ④ Copywriter
+                                                     ├→ ⑤ Image Creator
+                                                     └→ ⑥ Video Producer
+              ⑨ Learning ← ⑧ Analyst ← ⑦ Publisher ←──┘   (⑨ đóng vòng phản hồi)
+```
+
+Các agent trao đổi qua một bảng đen dùng chung (`PipelineContext`); orchestrator tuần tự gọi từng agent, bỏ qua agent chưa cấu hình. Chi tiết: [ARCHITECTURE.md §10](./ARCHITECTURE.md#10-kiến-trúc-9-ai-agent).
+
+## Triết lý "trước đám đông"
+
+Một thứ đã viral thì ai cũng thấy. TrendOS ưu tiên **gia tốc** (tốc độ tăng đang nhanh dần) và **độ mới**, đồng thời thưởng điểm khi một chủ đề xuất hiện đồng thời trên nhiều nguồn. Chủ đề đã bão hoà (volume cao nhưng đà chững) bị giảm điểm. Logic này nằm ở `trendos/detection/scorer.py`.
+
+## Trạng thái hiện tại
+
+✅ **Giai đoạn: MVP kỹ thuật có thể chạy.** Pipeline collect → detect → generate
+→ media → publish → analytics đã có đường chạy end-to-end. HN/RSS/GitHub chạy
+thật; Reddit/YouTube/X cần API key; TikTok cần provider riêng. Media/publish/
+analytics có adapter `local` an toàn để phát triển và test không tác động nền
+tảng thật.
+
+Xem [ARCHITECTURE.md](./ARCHITECTURE.md) để hiểu thiết kế đầy đủ.
+
+## Bắt đầu nhanh
 
 ```bash
-cp .env.example .env          # điền DATABASE_URL, ANTHROPIC_API_KEY, CHANNEL_TOKEN_SECRET
-#   sinh secret: openssl rand -hex 32
-npm install
-npm run prisma:migrate        # tạo bảng (cần PostgreSQL)
-npm run db:seed               # tạo spa demo
-npm run dev                   # mở http://localhost:3000
+# 1. Cài đặt (Python 3.11+)
+pip install -e ".[dev]"
 
-# Chạy thủ công các nhịp agent (cần ANTHROPIC_API_KEY):
-npm run agent:standup         # họp giao ban: intel→strategy→content→CEO→cổng duyệt
-npm run agent:optimize        # tối ưu ads cấp danh mục
-npm run agent:publish         # đăng các bài tới hạn
+# 2. Cấu hình
+cp .env.example .env
+# điền ANTHROPIC_API_KEY và các API key nguồn dữ liệu
+
+# 3. Chạy pipeline thử
+python -m trendos.cli run --dry-run
+
+# 4. Chạy API server
+uvicorn trendos.api.app:app --reload
+# mở http://localhost:8000/dashboard hoặc http://localhost:8000/docs
 ```
 
-API: `POST /api/cron/standup`, `/api/cron/optimize`, `/api/cron/publish`
-(bảo vệ bằng header `x-cron-secret` hoặc `Authorization: Bearer <CRON_SECRET>`),
-webhook inbox `POST /api/webhooks/reply`, cổng duyệt `POST /api/approvals`,
-`GET /api/health`.
+### Chạy full local pipeline
 
-## Ánh xạ Phase (đã triển khai khung)
+```env
+IMAGE_PROVIDER_KEY=local
+VIDEO_PROVIDER_KEY=local
+PUBLISH_PROVIDER_KEY=local
+ANALYTICS_PROVIDER_KEY=local
+OUTPUT_DIR=trendos_output
+ANTHROPIC_API_KEY=...
+```
 
-| Phase | Trạng thái trong code |
-|---|---|
-| **0 — Nền tảng** | ✅ Next.js + Prisma multi-tenant + orchestrator + scheduler + guardrail/AgentRun |
-| **1 — Lõi nội dung** | ✅ CEO + Intel + Strategy + Content + Publisher (4 kênh, mock) + dashboard + bản tin |
-| **2 — Tương tác & lead** | ✅ Social Care (reply) + Lead Collector + webhook + trang Lead |
-| **3 — Ads loop** | ✅ Media Buyer + Optimizer + guardrail ngân sách (connector mock) |
-| **4 — Đóng vòng** | ✅ Analytics + dashboard + cổng duyệt Zalo/Telegram; doanh thu phản hồi tùy chọn |
+Production provider có thể cắm bằng import path:
 
-## Chế độ connector
+```env
+PUBLISH_PROVIDER_KEY=my_project.providers:MetaPublishProvider
+```
 
-`CONNECTOR_MODE=mock` (mặc định) — sandbox, không gọi API thật (chờ app review
-FB/IG/TikTok/Zalo/Ads). Cắm connector `live` qua `registerChannelConnector` /
-`registerAdsConnector` khi có token hợp lệ.
+Provider class/factory nhận không tham số hoặc nhận một tham số `Settings`.
 
-> ⚠️ Kênh/Ads thật cần app review + token + ngân sách. Phần pháp lý là định hướng
-> kỹ thuật, **không thay tư vấn luật** — xem docs/AI-MOS-DESIGN.md mục 13.
+### Duyệt nội dung trước khi publish
+
+Dashboard có workflow duyệt nội dung tại `/dashboard/content`:
+
+- `Preview`: xem đầy đủ body, metadata, assets và publication receipts.
+- `Approve`: đánh dấu nội dung sẵn sàng publish thật.
+- `Reject`: loại khỏi luồng publish thật.
+
+Khi dùng production `PUBLISH_PROVIDER_KEY` qua import path, Publisher chỉ đăng
+các `ContentPiece` có `approval_status=approved`. `local` provider vẫn cho phép
+chạy end-to-end an toàn trong môi trường dev.
+
+```bash
+python -m trendos.cli run --full
+```
+
+### Bảo vệ API/Dashboard
+
+Set `API_KEY` trong `.env`, sau đó gửi `X-TrendOS-Key` hoặc
+`Authorization: Bearer <key>` cho dashboard/write endpoints.
+
+### Quality gate
+
+```bash
+python -m pytest -q
+python -m ruff check .
+python -m mypy trendos
+```
+
+## Cấu trúc thư mục
+
+```
+trendos/
+├── config.py            # Cấu hình (pydantic-settings, đọc từ .env)
+├── models.py            # Domain models: Signal, Trend, ContentPiece + artifact 9 agent
+├── agents/              # ★ Tầng 9 AI agent (đứng trên các tầng capability)
+│   ├── base.py          #   BaseAgent (interface) + PipelineContext (blackboard)
+│   ├── trend_hunter.py  #   ① bọc collectors + detection
+│   ├── research.py, strategist.py, copywriter.py,
+│   │   image_creator.py, video_producer.py,
+│   │   publisher.py, analyst.py, learning.py   # ②–⑨
+├── collectors/          # Nguồn dữ liệu (mỗi nền tảng một file)
+│   ├── base.py          #   BaseCollector (interface)
+│   ├── google_trends.py, reddit.py, twitter.py, youtube.py,
+│   │   tiktok.py, hackernews.py, rss.py, github.py
+├── detection/           # Engine phát hiện xu hướng
+│   ├── scorer.py        #   Chấm điểm momentum/độ mới/đa nguồn
+│   ├── dedup.py         #   Gom cụm tín hiệu giống nhau
+│   └── ranker.py        #   Xếp hạng & lọc top
+├── generation/          # Sản xuất nội dung
+│   ├── base.py          #   BaseGenerator (interface)
+│   ├── claude_client.py #   Wrapper Anthropic SDK
+│   ├── prompts.py       #   Prompt theo từng định dạng
+│   ├── social_post.py, blog_article.py, video_script.py
+├── pipeline/
+│   └── orchestrator.py  # Nối collect → detect → generate
+├── storage/
+│   └── repository.py    # Lớp trừu tượng lưu trữ
+├── api/
+│   ├── app.py           # FastAPI app
+│   └── routes/          # /trends, /content
+└── cli.py               # Entry point dòng lệnh
+```
+
+## Lộ trình
+
+- [x] Khung dự án + kiến trúc + interface
+- [x] Khung dây chuyền 9 AI agent (interface `BaseAgent` + blackboard + orchestrator)
+- [x] Collector Hacker News + RSS + GitHub + Reddit (logic thật)
+- [x] Engine chấm điểm momentum (velocity/gia tốc/độ mới/bão hoà) + clustering
+- [x] Logic 9 agent: Research/Strategist/Copywriter (Claude), Image/Video/Publisher/Analyst (qua interface provider), Learning (heuristic)
+- [x] Lưu trữ bền bằng SQLite (`SqliteRepository`) — lưu lịch sử metric cho velocity/acceleration
+- [x] Adapter local cho ảnh/video/đăng bài/analytics + dashboard web cơ bản
+- [x] Google Trends/X/YouTube collector ở mức production-safe; TikTok chờ provider ổn định
+- [x] Lập lịch chạy định kỳ đơn giản + run tracking
+- [x] Cơ chế cắm adapter production qua import path cấu hình
+- [x] Dashboard quản trị: runs, trends, content preview, approve/reject, trend detail, nút chạy pipeline
+- [x] API auth, pagination, health details, schema versioning, Docker, CI, runbook
+
+Các tích hợp đăng thật Meta/TikTok/YouTube, image/video SaaS và analytics thật
+cần credential, app approval và chính sách publish cụ thể trước khi bật trong
+môi trường production.
+
+## Giấy phép
+
+TBD
